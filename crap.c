@@ -58,7 +58,7 @@ int create_server(struct sockaddr_in *server_address) {
 
 enum { buffer_size = 1024 };
 
-int get_request(int client_fd, char *method, char *target) {
+int get_request(int client_fd) {
   char request_buffer[buffer_size];
   int bytes_received = recv(
     client_fd, request_buffer, buffer_size-1, 0);
@@ -68,39 +68,42 @@ int get_request(int client_fd, char *method, char *target) {
     return -1;
   } else if (bytes_received == 0) {
     return -1;
-  } else if (bytes_received == buffer_size - 1) {
+  } else if (bytes_received > buffer_size - 1) {
     puts("Too much data");
     return -1;
   }
+
   request_buffer[bytes_received] = '\0';
 
+  size_t space_count = 0;
+  size_t newline_count = 0;
   char *current_char = request_buffer;
 
-  while (*current_char != ' ') current_char++;
-  size_t method_size = current_char-request_buffer + 1;
-  current_char++;
+  for (;;) {
+    if (*current_char == ' ') {
+      space_count++;
+    } else if (*current_char == '\n') {
+      newline_count++;
+      break;
+    } else if (*current_char == '\0') {
+      break;
+    }
 
-  *method = malloc(method_size);
-  snprintf(method, method_size, "%s", request_buffer);
+    current_char++;
+  }
 
-  while (*current_char != ' ') current_char++;
-  size_t target_size = current_char-&(request_buffer[method_size]) + 1;
-  *target = malloc(target_size);
-  snprintf(target, target_size, "%s", &request_buffer[method_size]);
-  
+  if (space_count == 2 && newline_count == 1) {
+    puts("Valid request-line");
+  }
+
   return 0;
 }
 
-int send_response(int client_fd, char *method, char *target) {
+int send_response(int client_fd) {
   char status_line_headers[] =
     "HTTP/1.1 200 OK\n"
     "Content-Type: text/html\n"
     "\n";
-
-  if (strcmp(method, "GET") == 0) {
-    puts("Get request being handled");
-  }
-  puts(method);
 
   char message_body[1024] = {0};
   FILE *index_file = fopen("TRASH/index.html", "r");
@@ -125,18 +128,14 @@ int send_response(int client_fd, char *method, char *target) {
 void accept_connection(int server_fd) {
   int client_fd = accept(server_fd, NULL, NULL);
   puts("Connection accepted");
-  char *method;
-  char *target;
 
-  int request_result = get_request(
-    client_fd, &method, &target);
+  int request_result = get_request(client_fd);
   if (request_result == -1) {
     close(client_fd);
     return;
   }
 
-  int response_result = send_response(
-    client_fd, &method, &target);
+  int response_result = send_response(client_fd);
   if (response_result == -1) {
     close(client_fd);
     return;
