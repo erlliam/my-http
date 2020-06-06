@@ -58,8 +58,38 @@ int create_server(struct sockaddr_in *server_address) {
 
 enum { buffer_size = 1024 };
 
+struct request_line {
+  char *method;
+  char *request_target;
+  char *http_version;
+};
+
+int recv_from_client(
+  int client_fd, char *buffer, size_t size) {
+  int bytes_received = recv(
+    client_fd, buffer, size, 0);
+
+  if (bytes_received == -1) {
+    perror("Recv");
+    return 1;
+  } else if (bytes_received == 0) {
+    return 1;
+  }
+  return 0;
+}
+
+int get_request_line(
+  int client_fd, struct request_line *request_line) {
+  char buffer[buffer_size];
+
+  recv_from_client(client_fd, buffer, buffer_size-1);
+  return 0;
+}
+
 int get_request(int client_fd) {
   char request_buffer[buffer_size];
+  struct request_line *request_line;
+  // get_request_line(client_fd, request_line);
   int bytes_received = recv(
     client_fd, request_buffer, buffer_size-1, 0);
 
@@ -162,9 +192,6 @@ int main(int argc, char **argv) {
       set_port(argv[2], &server_address);
       break;
   }
-  // I am thinking of making a struct that holds IP+PORT
-  // and then calling set_ip and set_port once
-  // and the switch statement updates the struct
 
   int server_fd = create_server(&server_address);
   puts("Server created at: xxx.xxx.xxx.xxx:xxxx");
