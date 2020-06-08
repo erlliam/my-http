@@ -64,66 +64,27 @@ struct request_line {
   char *http_version;
 };
 
-int recv_from_client(
-  int client_fd, char *buffer, size_t size) {
-  int bytes_received = recv(
-    client_fd, buffer, size, 0);
-
-  if (bytes_received == -1) {
-    perror("Recv");
-    return 1;
-  } else if (bytes_received == 0) {
-    return 1;
-  }
-  return 0;
-}
-
 int get_request_line(
-  int client_fd, struct request_line *request_line) {
-  char buffer[buffer_size];
+  int client_fd, struct request_line *request_line)
+{
+  printf("Called function: %p\n", request_line);
+  request_line = (void *)malloc(sizeof(struct request_line));
+  request_line->method = strdup("GET");
+  request_line->request_target = strdup("/test");
+  request_line->http_version = strdup("HTTP/1.1");
 
-  recv_from_client(client_fd, buffer, buffer_size-1);
+  printf("Method: %s, Target: %s, Version: %s\n", 
+    request_line->method, request_line->request_target,
+    request_line->http_version);
   return 0;
 }
 
 int get_request(int client_fd) {
-  char request_buffer[buffer_size];
   struct request_line *request_line;
-  // get_request_line(client_fd, request_line);
-  int bytes_received = recv(
-    client_fd, request_buffer, buffer_size-1, 0);
+  printf("Calling function: %p\n", request_line);
 
-  if (bytes_received == -1) {
-    perror("Recv");
+  if (get_request_line(client_fd, request_line) == -1) {
     return -1;
-  } else if (bytes_received == 0) {
-    return -1;
-  } else if (bytes_received > buffer_size - 1) {
-    puts("Too much data");
-    return -1;
-  }
-
-  request_buffer[bytes_received] = '\0';
-
-  size_t space_count = 0;
-  size_t newline_count = 0;
-  char *current_char = request_buffer;
-
-  for (;;) {
-    if (*current_char == ' ') {
-      space_count++;
-    } else if (*current_char == '\n') {
-      newline_count++;
-      break;
-    } else if (*current_char == '\0') {
-      break;
-    }
-
-    current_char++;
-  }
-
-  if (space_count == 2 && newline_count == 1) {
-    puts("Valid request-line");
   }
 
   return 0;
