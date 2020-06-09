@@ -56,8 +56,6 @@ int create_server(struct sockaddr_in *server_address) {
   return server_fd;
 }
 
-enum { buffer_size = 1024 };
-
 struct request_line {
   char *method;
   char *request_target;
@@ -79,12 +77,42 @@ int get_request_line(
   return 0;
 }
 
-int get_request(int client_fd) {
-  struct request_line *request_line;
-  printf("Calling function: %p\n", request_line);
+enum { buffer_size = 1024 };
 
-  if (get_request_line(client_fd, request_line) == -1) {
-    return -1;
+int get_request(int client_fd) {
+  size_t current_buffer_size = buffer_size;
+  size_t total_bytes = 0;
+  char *buffer = malloc(current_buffer_size);
+  for (;;) {
+    char *write_location = buffer + total_bytes;
+    size_t buffer_free_bytes = (current_buffer_size - 1) -
+      total_bytes;
+
+    if (buffer_free_bytes == 0) {
+      current_buffer_size += buffer_size;
+      buffer = realloc(buffer, current_buffer_size);
+      buffer_free_bytes = (current_buffer_size - 1) -
+        total_bytes;
+    }
+    printf("Buffer free bytes: %ld\n", buffer_free_bytes);
+
+    int received_bytes = recv(
+      client_fd, write_location, buffer_free_bytes, 0);
+    printf("Bytes received: %d\n", received_bytes);
+
+    if (received_bytes == -1) {
+      perror("Recv");
+      return -1;
+    } else if (received_bytes == 0) {
+      break;
+    } else if (received_bytes < buffer_free_bytes) {
+      printf("%ld\n", buffer_free_bytes);
+      printf("%ld\n", total_bytes);
+      buffer[total_bytes] = '\0';
+      break;
+    }
+
+    total_bytes += received_bytes;
   }
 
   return 0;
