@@ -94,7 +94,6 @@ int get_request(int client_fd) {
       buffer_free_bytes = (current_buffer_size - 1) -
         total_bytes;
     }
-    printf("Buffer free bytes: %ld\n", buffer_free_bytes);
 
     int received_bytes = recv(
       client_fd, write_location, buffer_free_bytes, 0);
@@ -105,14 +104,10 @@ int get_request(int client_fd) {
       return -1;
     } else if (received_bytes == 0) {
       break;
-    } else if (received_bytes < buffer_free_bytes) {
-      printf("%ld\n", buffer_free_bytes);
-      printf("%ld\n", total_bytes);
-      buffer[total_bytes] = '\0';
-      break;
     }
 
     total_bytes += received_bytes;
+    printf("Total bytes: %ld\n", total_bytes);
   }
 
   return 0;
@@ -125,7 +120,7 @@ int send_response(int client_fd) {
     "\n";
 
   char message_body[1024] = {0};
-  FILE *index_file = fopen("TRASH/index.html", "r");
+  FILE *index_file = fopen("/home/altair/projects/my-http/TRASH/index.html", "r");
   if (index_file == NULL) puts("File not found.");
 
   fseek(index_file, 0, SEEK_END);
