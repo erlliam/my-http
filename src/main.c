@@ -62,53 +62,36 @@ struct request_line {
   char *http_version;
 };
 
-int get_request_line(
-  int client_fd, struct request_line *request_line)
-{
-  printf("Called function: %p\n", request_line);
-  request_line = (void *)malloc(sizeof(struct request_line));
-  request_line->method = strdup("GET");
-  request_line->request_target = strdup("/test");
-  request_line->http_version = strdup("HTTP/1.1");
-
-  printf("Method: %s, Target: %s, Version: %s\n", 
-    request_line->method, request_line->request_target,
-    request_line->http_version);
-  return 0;
-}
-
-enum { buffer_size = 1024 };
+enum { buffer_size = 8192 };
 
 int get_request(int client_fd) {
-  size_t current_buffer_size = buffer_size;
+  char buffer[buffer_size];
+  char *start_at = buffer;
   size_t total_bytes = 0;
-  char *buffer = malloc(current_buffer_size);
-  for (;;) {
-    char *write_location = buffer + total_bytes;
-    size_t buffer_free_bytes = (current_buffer_size - 1) -
-      total_bytes;
+  size_t bytes_available = buffer_size - 1;
 
-    if (buffer_free_bytes == 0) {
-      current_buffer_size += buffer_size;
-      buffer = realloc(buffer, current_buffer_size);
-      buffer_free_bytes = (current_buffer_size - 1) -
-        total_bytes;
-    }
+  for (;;) {
+    start_at = buffer + total_bytes;
 
     int received_bytes = recv(
-      client_fd, write_location, buffer_free_bytes, 0);
-    printf("Bytes received: %d\n", received_bytes);
-
+      client_fd, start_at, bytes_available, 0);
     if (received_bytes == -1) {
       perror("Recv");
       return -1;
     } else if (received_bytes == 0) {
-      break;
+      puts("Connection closed");
+      return -1;
     }
 
     total_bytes += received_bytes;
-    printf("Total bytes: %ld\n", total_bytes);
+    bytes_available -= received_bytes;
+
+    if (total_bytes >= buffer_size - 1) {
+      puts("Buffer is not big enough.");
+      break;
+    }
   }
+
 
   return 0;
 }
@@ -141,7 +124,6 @@ int send_response(int client_fd) {
 
 void accept_connection(int server_fd) {
   int client_fd = accept(server_fd, NULL, NULL);
-  puts("Connection accepted");
 
   int request_result = get_request(client_fd);
   if (request_result == -1) {
