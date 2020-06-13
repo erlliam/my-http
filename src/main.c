@@ -64,6 +64,27 @@ struct request_line {
 
 enum { buffer_size = 8192 };
 
+int is_crlf(char *start) {
+  // Bad to use no curly brace if statements?
+  if (*start == '\n' && *(start - 1) == '\r') return 1;
+
+  return 0;
+}
+
+int found_empty_line(char *data, size_t last_index) {
+  size_t current_index = 0;
+  for (;;) {
+    if (current_index == last_index) {
+      return 0;
+    }
+    if (is_crlf(data + current_index) &&
+        is_crlf(data + current_index + 2)) break;
+
+    current_index++;
+  }
+  return 1;
+}
+
 int get_request(int client_fd) {
   char buffer[buffer_size];
   char *start_at = buffer;
@@ -79,20 +100,24 @@ int get_request(int client_fd) {
       perror("Recv");
       return -1;
     } else if (received_bytes == 0) {
+      // Also called when the buffer is full? Don't know y
       puts("Connection closed");
       return -1;
     }
 
     total_bytes += received_bytes;
     bytes_available -= received_bytes;
+    
+    if (found_empty_line(buffer, total_bytes)) break;
 
     if (total_bytes >= buffer_size - 1) {
       puts("Buffer is not big enough.");
-      break;
+      return -1;
     }
   }
 
-
+  buffer[total_bytes] = '\0';
+  puts(buffer);
   return 0;
 }
 
