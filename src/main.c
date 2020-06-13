@@ -56,13 +56,6 @@ int create_server(struct sockaddr_in *server_address) {
   return server_fd;
 }
 
-struct request_line {
-  char *method;
-  char *request_target;
-  char *http_version;
-};
-
-enum { buffer_size = 8192 };
 
 int is_crlf(char *start) {
   // Bad to use no curly brace if statements?
@@ -71,7 +64,7 @@ int is_crlf(char *start) {
   return 0;
 }
 
-int found_empty_line(char *data, size_t last_index) {
+int contains_empty_line(char *data, size_t last_index) {
   size_t current_index = 0;
   for (;;) {
     if (current_index == last_index) {
@@ -85,22 +78,22 @@ int found_empty_line(char *data, size_t last_index) {
   return 1;
 }
 
-int get_request(int client_fd) {
-  char buffer[buffer_size];
-  char *start_at = buffer;
+// Really bad function name...
+int fill_empty_buffer(int fd, char *buffer, size_t size) {
   size_t total_bytes = 0;
-  size_t bytes_available = buffer_size - 1;
+  size_t buffer_capacity = size - 1;
+  size_t bytes_available = buffer_capacity;
 
   for (;;) {
-    start_at = buffer + total_bytes;
+    char *start_at = buffer + total_bytes;
 
     int received_bytes = recv(
-      client_fd, start_at, bytes_available, 0);
+      fd, start_at, bytes_available, 0);
+
     if (received_bytes == -1) {
       perror("Recv");
       return -1;
     } else if (received_bytes == 0) {
-      // Also called when the buffer is full? Don't know y
       puts("Connection closed");
       return -1;
     }
@@ -108,16 +101,50 @@ int get_request(int client_fd) {
     total_bytes += received_bytes;
     bytes_available -= received_bytes;
     
-    if (found_empty_line(buffer, total_bytes)) break;
+    if (contains_empty_line(buffer, total_bytes)) break;
 
-    if (total_bytes >= buffer_size - 1) {
-      puts("Buffer is not big enough.");
+    if (total_bytes == buffer_capacity) {
+      puts("Buffer is not big enough");
       return -1;
     }
   }
 
   buffer[total_bytes] = '\0';
-  puts(buffer);
+
+  return 1;
+}
+
+enum { buffer_size = 8192 };
+
+struct request_line {
+  char *method;
+  char *request_target;
+  char *http_version;
+};
+
+void fill_request_line(
+  struct request_line *request_line,
+  char *data)
+{
+  // TODO
+  printf("%p, %p ", (void *)request_line, data);
+  request_line->method = "GET";
+}
+
+int get_request(int client_fd) {
+  char *buffer = malloc(buffer_size);
+
+  if (fill_empty_buffer(
+    client_fd,
+    buffer,
+    buffer_size) == -1) return -1;
+
+  struct request_line *request_line;
+  request_line = malloc(sizeof(*request_line));
+
+  fill_request_line(request_line, buffer);
+  puts(request_line->method);
+
   return 0;
 }
 
@@ -128,7 +155,9 @@ int send_response(int client_fd) {
     "\n";
 
   char message_body[1024] = {0};
-  FILE *index_file = fopen("/home/altair/projects/my-http/TRASH/index.html", "r");
+  FILE *index_file = fopen(
+    "/home/altair/projects/my-http"
+    "/TRASH/index.html", "r");
   if (index_file == NULL) puts("File not found.");
 
   fseek(index_file, 0, SEEK_END);
