@@ -58,16 +58,19 @@ int create_server(struct sockaddr_in *server_address) {
 
 
 int is_crlf(char *start) {
-  // Bad to use no curly brace if statements?
   if (*start == '\n' && *(start - 1) == '\r') return 1;
 
   return 0;
 }
 
-int contains_empty_line(char *data, size_t last_index) {
+int contains_empty_line(char *data, size_t data_size) {
+  if (data_size < 4) {
+    return 0;
+  }
+
   size_t current_index = 0;
   for (;;) {
-    if (current_index == last_index) {
+    if (current_index == data_size) {
       return 0;
     }
     if (is_crlf(data + current_index) &&
@@ -85,6 +88,7 @@ int fill_empty_buffer(int fd, char *buffer, size_t size) {
   size_t bytes_available = buffer_capacity;
 
   for (;;) {
+    puts("Attempting to recv data");
     char *start_at = buffer + total_bytes;
 
     int received_bytes = recv(
@@ -100,8 +104,14 @@ int fill_empty_buffer(int fd, char *buffer, size_t size) {
 
     total_bytes += received_bytes;
     bytes_available -= received_bytes;
-    
-    if (contains_empty_line(buffer, total_bytes)) break;
+
+    if (received_bytes < 4) {
+      // TODO Fix here
+      puts("We can't properly check for CRLF");
+    }
+
+    if (contains_empty_line(
+      start_at, received_bytes)) break;
 
     if (total_bytes == buffer_capacity) {
       puts("Buffer is not big enough");
@@ -118,17 +128,45 @@ enum { buffer_size = 8192 };
 
 struct request_line {
   char *method;
-  char *request_target;
-  char *http_version;
+  char *target;
+  char *version;
 };
 
+void allocate_and_memcpy(
+  char *string, size_t size, char *start)
+{
+  string = malloc(size + 1);
+  memcpy(string, start, size);
+  string[size] = '\0';
+}
+
+void malloc_and_memcpy(char **string, size_t size, char *start) {
+  *string = malloc(size + 1);
+  memcpy(*string, start, size);
+  (*string)[size] = '\0';
+}
+
 void fill_request_line(
-  struct request_line *request_line,
   char *data)
 {
-  // TODO
-  printf("%p, %p ", (void *)request_line, data);
-  request_line->method = "GET";
+  // Validate the format of the request_line first...
+  char *first_space = strchr(data, ' ');
+  char *second_space = strchr(first_space + 1, ' ');
+  char *first_cr = strchr(second_space + 1, '\r');
+
+  size_t method_size = first_space - data;
+  size_t target_size = second_space - (first_space + 1);
+  size_t version_size = first_cr - (second_space + 1);
+
+  struct request_line request_line;
+
+  malloc_and_memcpy(&(request_line.method), method_size, data);
+  malloc_and_memcpy(&(request_line.target), target_size, first_space + 1);
+  malloc_and_memcpy(&(request_line.version), version_size, second_space + 1);
+
+  puts(request_line.method);
+  puts(request_line.target);
+  puts(request_line.version);
 }
 
 int get_request(int client_fd) {
@@ -139,11 +177,7 @@ int get_request(int client_fd) {
     buffer,
     buffer_size) == -1) return -1;
 
-  struct request_line *request_line;
-  request_line = malloc(sizeof(*request_line));
-
-  fill_request_line(request_line, buffer);
-  puts(request_line->method);
+  fill_request_line(buffer);
 
   return 0;
 }
@@ -214,7 +248,10 @@ int main(int argc, char **argv) {
   }
 
   int server_fd = create_server(&server_address);
-  puts("Server created at: xxx.xxx.xxx.xxx:xxxx");
+  printf(
+    "Server created at: http://%s:%d\n",
+    inet_ntoa(server_address.sin_addr),
+    ntohs(server_address.sin_port));
   for (;;) {
     accept_connection(server_fd);
   }
