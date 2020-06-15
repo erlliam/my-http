@@ -132,23 +132,15 @@ struct request_line {
   char *version;
 };
 
-void allocate_and_memcpy(
-  char *string, size_t size, char *start)
+void malloc_and_memcpy(char **string, size_t size, 
+  char *start)
 {
-  string = malloc(size + 1);
-  memcpy(string, start, size);
-  string[size] = '\0';
-}
-
-void malloc_and_memcpy(char **string, size_t size, char *start) {
   *string = malloc(size + 1);
   memcpy(*string, start, size);
   (*string)[size] = '\0';
 }
 
-void fill_request_line(
-  char *data)
-{
+void get_request_line(char *data) {
   // Validate the format of the request_line first...
   char *first_space = strchr(data, ' ');
   char *second_space = strchr(first_space + 1, ' ');
@@ -160,13 +152,15 @@ void fill_request_line(
 
   struct request_line request_line;
 
-  malloc_and_memcpy(&(request_line.method), method_size, data);
-  malloc_and_memcpy(&(request_line.target), target_size, first_space + 1);
-  malloc_and_memcpy(&(request_line.version), version_size, second_space + 1);
+  malloc_and_memcpy(&(request_line.method),
+    method_size, data);
 
-  puts(request_line.method);
-  puts(request_line.target);
-  puts(request_line.version);
+  malloc_and_memcpy(&(request_line.target),
+    target_size, first_space + 1);
+
+  malloc_and_memcpy(&(request_line.version),
+    version_size, second_space + 1);
+
 }
 
 int get_request(int client_fd) {
@@ -177,7 +171,7 @@ int get_request(int client_fd) {
     buffer,
     buffer_size) == -1) return -1;
 
-  fill_request_line(buffer);
+  get_request_line(buffer);
 
   return 0;
 }
