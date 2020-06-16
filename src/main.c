@@ -140,8 +140,10 @@ void malloc_and_memcpy(char **string, size_t size,
   (*string)[size] = '\0';
 }
 
-void get_request_line(char *data) {
+struct request_line *get_request_line(char *data) {
   // Validate the format of the request_line first...
+  // There is no error checking going on here...
+  // What could possibly go wrong?
   char *first_space = strchr(data, ' ');
   char *second_space = strchr(first_space + 1, ' ');
   char *first_cr = strchr(second_space + 1, '\r');
@@ -150,20 +152,24 @@ void get_request_line(char *data) {
   size_t target_size = second_space - (first_space + 1);
   size_t version_size = first_cr - (second_space + 1);
 
-  struct request_line request_line;
+  struct request_line *request_line = malloc(
+    sizeof(request_line));
 
-  malloc_and_memcpy(&(request_line.method),
+  malloc_and_memcpy(&(request_line->method),
     method_size, data);
 
-  malloc_and_memcpy(&(request_line.target),
+  malloc_and_memcpy(&(request_line->target),
     target_size, first_space + 1);
 
-  malloc_and_memcpy(&(request_line.version),
+  malloc_and_memcpy(&(request_line->version),
     version_size, second_space + 1);
 
+  return request_line;
 }
 
-int get_request(int client_fd) {
+int get_request(int client_fd,
+  struct request_line **request_line)
+{
   char *buffer = malloc(buffer_size);
 
   if (fill_empty_buffer(
@@ -171,12 +177,22 @@ int get_request(int client_fd) {
     buffer,
     buffer_size) == -1) return -1;
 
-  get_request_line(buffer);
+  *request_line = get_request_line(buffer);
 
   return 0;
 }
 
-int send_response(int client_fd) {
+int send_response(int client_fd,
+  struct request_line request_line)
+{
+  puts(request_line.method);
+  puts(request_line.target);
+  puts(request_line.version);
+
+  if (strcmp(request_line.method, "GET ")) {
+    puts("We must fetch some resources.");
+  }
+
   char status_line_headers[] =
     "HTTP/1.1 200 OK\n"
     "Content-Type: text/html\n"
@@ -207,13 +223,19 @@ int send_response(int client_fd) {
 void accept_connection(int server_fd) {
   int client_fd = accept(server_fd, NULL, NULL);
 
-  int request_result = get_request(client_fd);
+  struct request_line *request_line;
+
+  int request_result = get_request(client_fd,
+    &request_line);
+
   if (request_result == -1) {
     close(client_fd);
     return;
   }
 
-  int response_result = send_response(client_fd);
+  int response_result = send_response(client_fd,
+    *request_line);
+
   if (response_result == -1) {
     close(client_fd);
     return;
