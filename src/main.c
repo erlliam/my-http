@@ -151,6 +151,12 @@ struct request_line *get_request_line(char *data) {
   size_t method_size = first_space - data;
   size_t target_size = second_space - (first_space + 1);
   size_t version_size = first_cr - (second_space + 1);
+  printf(
+    "Method size: %ld\n"
+    "Target size: %ld\n"
+    "Version size: %ld\n",
+    method_size, target_size, version_size);
+
 
   struct request_line *request_line = malloc(
     sizeof(request_line));
@@ -185,13 +191,20 @@ int get_request(int client_fd,
 int send_response(int client_fd,
   struct request_line request_line)
 {
-  puts(request_line.method);
-  puts(request_line.target);
-  puts(request_line.version);
 
-  if (strcmp(request_line.method, "GET ")) {
+  if (strcmp(request_line.version, "HTTP/1.1")) {
+    puts("We do not support this HTTP method");
+  }
+
+  if (strcmp(request_line.method, "GET") == 0) {
     puts("We must fetch some resources.");
   }
+
+  if (strcmp(request_line.target, "/") == 0) {
+    puts("We must fetch the root target resouce.");
+  }
+
+  printf("STRLEN Target: %ld", strlen(request_line.target));
 
   char status_line_headers[] =
     "HTTP/1.1 200 OK\n"
