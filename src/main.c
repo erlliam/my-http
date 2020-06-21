@@ -181,9 +181,34 @@ int get_request(int client_fd,
   return 0;
 }
 
+void my_test() {
+  char a[] = "test";
+  char *search = strchr(a, 's');
+  // search - a = index of char
+  size_t location = search - a;
+  printf("TEST:\n\tlocation: %ld\n", location);
+}
+
+
+char *get_extension(char *target) {
+  char *period = strchr(target, '.');
+  size_t period_index = period - target;
+
+  size_t extension_size = strlen(target) -
+    (period_index + 1);
+
+  char *extension = malloc(extension_size + 1);
+
+  snprintf(extension, extension_size + 1,
+    "%s", period + 1);
+
+  return extension;
+}
+
 int send_response(int client_fd,
   struct request_line request_line)
 {
+
   if (strcmp(request_line.version, "HTTP/1.1")) {
     puts("We do not support this HTTP method");
   }
@@ -195,7 +220,6 @@ int send_response(int client_fd,
   char last_character = request_line.target[
     strlen(request_line.target) - 1];
 
-
   char index_html[] = "/index.html";
 
   if (last_character == '/') {
@@ -205,6 +229,9 @@ int send_response(int client_fd,
     snprintf(request_line.target, le_size,
       "%s", index_html);
   }
+
+  char *target_extension = get_extension(
+    request_line.target);
 
   char root[] = "/home/altair/projects/my-http/TRASH";
 
@@ -216,12 +243,13 @@ int send_response(int client_fd,
   snprintf(target, le_size, "%s%s", root, request_line.target);
   puts(target);
 
-  char http_200[] = "HTTP/1.1 200 OK\n"
   char status_line_headers[] =
     "HTTP/1.1 200 OK\n"
+    "Content-Type: text/html\n"
     "\n";
 
   puts(request_line.target);
+  puts(target_extension);
 
   char message_body[1024] = {0};
   FILE *index_file = fopen(target, "r");
