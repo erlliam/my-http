@@ -64,12 +64,12 @@ int fill_buffer_with_request(int fd, char *buffer,
       }
     } else if (total_bytes >= 4) {
       size_t offset = 4 - received_bytes;
-
       if (has_empty_line(start_at - offset,
         received_bytes + offset))
       {
         break;
       }
+
     }
 
   }
@@ -92,8 +92,30 @@ void malloc_and_memcpy(char **string, size_t size,
   (*string)[size] = '\0';
 }
 
+int has_valid_request_line(char *string) {
+  size_t space_count = 0;
+  size_t crlf_count = 0;
+
+  for (char *c = string; *c != '\0'; c++) {
+    if (*c == ' ') {
+      space_count++;
+    } else if (*c == '\r') {
+      char *next = c + 1;
+      if (*next != '\0' && *next == '\n') {
+        crlf_count++;
+        break;
+      }
+    }
+  }
+
+  if (space_count == 2 && crlf_count == 1) {
+    return 1;
+  }
+
+  return 0;
+}
+
 struct request_line *get_request_line(char *data) {
-  // Validate the format of the request_line first...
   // There is no error checking going on here...
   // What could possibly go wrong?
   char *first_space = strchr(data, ' ');
@@ -131,7 +153,11 @@ int get_request(int client_fd,
     buffer,
     buffer_size) == -1) return -1;
 
-  *request_line = get_request_line(buffer);
+  if (has_valid_request_line(buffer)) {
+    *request_line = get_request_line(buffer);
+  } else {
+    return -1;
+  }
 
   return 0;
 }
