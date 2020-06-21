@@ -88,7 +88,6 @@ int fill_empty_buffer(int fd, char *buffer, size_t size) {
   size_t bytes_available = buffer_capacity;
 
   for (;;) {
-    puts("Attempting to recv data");
     char *start_at = buffer + total_bytes;
 
     int received_bytes = recv(
@@ -151,12 +150,6 @@ struct request_line *get_request_line(char *data) {
   size_t method_size = first_space - data;
   size_t target_size = second_space - (first_space + 1);
   size_t version_size = first_cr - (second_space + 1);
-  printf(
-    "Method size: %ld\n"
-    "Target size: %ld\n"
-    "Version size: %ld\n",
-    method_size, target_size, version_size);
-
 
   struct request_line *request_line = malloc(
     sizeof(request_line));
@@ -191,30 +184,47 @@ int get_request(int client_fd,
 int send_response(int client_fd,
   struct request_line request_line)
 {
-
   if (strcmp(request_line.version, "HTTP/1.1")) {
     puts("We do not support this HTTP method");
   }
-
-  if (strcmp(request_line.method, "GET") == 0) {
-    puts("We must fetch some resources.");
+  if (strcmp(request_line.method, "GET") != 0) {
+    puts("Only GET is supported.");
+    return -1;
   }
 
-  if (strcmp(request_line.target, "/") == 0) {
-    puts("We must fetch the root target resouce.");
+  char last_character = request_line.target[
+    strlen(request_line.target) - 1];
+
+
+  char index_html[] = "/index.html";
+
+  if (last_character == '/') {
+    size_t le_size = sizeof(index_html);
+    request_line.target = malloc(le_size);
+
+    snprintf(request_line.target, le_size,
+      "%s", index_html);
   }
 
-  printf("STRLEN Target: %ld", strlen(request_line.target));
+  char root[] = "/home/altair/projects/my-http/TRASH";
 
+  size_t le_size = strlen(root) +
+    strlen(request_line.target) + 1;
+
+  char *target = malloc(le_size);
+
+  snprintf(target, le_size, "%s%s", root, request_line.target);
+  puts(target);
+
+  char http_200[] = "HTTP/1.1 200 OK\n"
   char status_line_headers[] =
     "HTTP/1.1 200 OK\n"
-    "Content-Type: text/html\n"
     "\n";
 
+  puts(request_line.target);
+
   char message_body[1024] = {0};
-  FILE *index_file = fopen(
-    "/home/altair/projects/my-http"
-    "/TRASH/index.html", "r");
+  FILE *index_file = fopen(target, "r");
   if (index_file == NULL) puts("File not found.");
 
   fseek(index_file, 0, SEEK_END);
@@ -226,6 +236,7 @@ int send_response(int client_fd,
   send(
     client_fd, status_line_headers,
     strlen(status_line_headers), 0);
+
   send(
     client_fd, message_body,
     file_size, 0);
