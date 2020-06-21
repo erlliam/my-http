@@ -6,83 +6,32 @@
 #include <ctype.h>
 #include <string.h>
 
-void print_and_exit(char *string, int status) {
-  puts(string);
-  exit(status);
-}
-
-void set_ip(char *ip, struct sockaddr_in *server_address) {
-  int result = inet_pton(
-    AF_INET, ip, &(server_address->sin_addr));
-  if (!result) {
-    print_and_exit("Invalid IP", 1);
+int is_crlf(char *string) {
+  if (*string == '\r') {
+    if (*(string + 1) == '\n') {
+      return 1;
+    }
   }
-}
-
-void set_port(
-  char *port, struct sockaddr_in *server_address) {
-  if (strlen(port) == 0) {
-    print_and_exit("Invalid Port: empty", 1);
-  }
-
-  char *endptr;
-  long port_check = strtol(port, &endptr, 10);
-  if (!(*endptr == '\0')) {
-    print_and_exit(
-      "Invalid Port: must only contain numbers", 1);
-  }
-
-  if (!(port_check >= 0 && port_check <= 65535)) {
-    print_and_exit("Invalid Port: must be 0-65535", 1);
-  }
-
-  server_address->sin_port = htons(port_check);
-}
-
-int create_server(struct sockaddr_in *server_address) {
-  int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (server_fd == -1) perror("Socket");
-  int optval = 1;
-  setsockopt(
-    server_fd, SOL_SOCKET, SO_REUSEADDR,
-    &optval, sizeof(optval));
-
-  int bind_result = bind(
-    server_fd, (struct sockaddr *)server_address,
-    sizeof(*server_address));
-  if (bind_result == -1) perror("Bind");
-
-  if (listen(server_fd, 10) == -1) perror("Listen");
-  return server_fd;
-}
-
-
-int is_crlf(char *start) {
-  if (*start == '\n' && *(start - 1) == '\r') return 1;
 
   return 0;
 }
 
-int contains_empty_line(char *data, size_t data_size) {
-  if (data_size < 4) {
-    return 0;
-  }
+int has_empty_line(char *string, size_t size) {
+  for (size_t i = 0; size - i >= 4; i++) {
 
-  size_t current_index = 0;
-  for (;;) {
-    if (current_index == data_size) {
-      return 0;
+    if (is_crlf(string + i)) {
+      if (is_crlf(string + (i + 2))) {
+        return 1;
+      }
     }
-    if (is_crlf(data + current_index) &&
-        is_crlf(data + current_index + 2)) break;
-
-    current_index++;
   }
-  return 1;
+
+  return 0;
 }
 
-// Really bad function name...
-int fill_empty_buffer(int fd, char *buffer, size_t size) {
+int fill_buffer_with_request(int fd, char *buffer,
+  size_t size)
+{
   size_t total_bytes = 0;
   size_t buffer_capacity = size - 1;
   size_t bytes_available = buffer_capacity;
@@ -102,28 +51,32 @@ int fill_empty_buffer(int fd, char *buffer, size_t size) {
     }
 
     total_bytes += received_bytes;
-    bytes_available -= received_bytes;
-
-    if (received_bytes < 4) {
-      // TODO Fix here
-      puts("We can't properly check for CRLF");
-    }
-
-    if (contains_empty_line(
-      start_at, received_bytes)) break;
-
     if (total_bytes == buffer_capacity) {
       puts("Buffer is not big enough");
       return -1;
     }
+
+    bytes_available -= received_bytes;
+    
+    if (received_bytes >= 4) {
+      if (has_empty_line(start_at, received_bytes)) {
+        break;
+      }
+    } else if (total_bytes >= 4) {
+      size_t offset = 4 - received_bytes;
+
+      if (has_empty_line(start_at - offset,
+        received_bytes + offset))
+      {
+        break;
+      }
+    }
+
   }
-
   buffer[total_bytes] = '\0';
-
   return 1;
 }
 
-enum { buffer_size = 8192 };
 
 struct request_line {
   char *method;
@@ -166,12 +119,14 @@ struct request_line *get_request_line(char *data) {
   return request_line;
 }
 
+enum { buffer_size = 8192 };
+
 int get_request(int client_fd,
   struct request_line **request_line)
 {
   char *buffer = malloc(buffer_size);
 
-  if (fill_empty_buffer(
+  if (fill_buffer_with_request(
     client_fd,
     buffer,
     buffer_size) == -1) return -1;
@@ -180,15 +135,6 @@ int get_request(int client_fd,
 
   return 0;
 }
-
-void my_test() {
-  char a[] = "test";
-  char *search = strchr(a, 's');
-  // search - a = index of char
-  size_t location = search - a;
-  printf("TEST:\n\tlocation: %ld\n", location);
-}
-
 
 char *get_extension(char *target) {
   char *period = strchr(target, '.');
@@ -272,9 +218,27 @@ int send_response(int client_fd,
   return 0;
 }
 
+void read_client(int client_fd) {
+  char *buffer = malloc(buffer_size);
+  recv(
+    client_fd, buffer, buffer_size, 0);
+  puts(buffer);
+}
+
+void send_client(int client_fd) {
+  char status_line_headers[] =
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: text/html\n"
+    "\n"
+    "<h1>Hi</h1>\n";
+
+  send(
+    client_fd, status_line_headers,
+    strlen(status_line_headers), 0);
+}
+
 void accept_connection(int server_fd) {
   int client_fd = accept(server_fd, NULL, NULL);
-
   struct request_line *request_line;
 
   int request_result = get_request(client_fd,
@@ -296,9 +260,60 @@ void accept_connection(int server_fd) {
   close(client_fd);
 }
 
+void print_and_exit(char *string, int status) {
+  puts(string);
+  exit(status);
+}
+
+void set_ip(char *ip, struct sockaddr_in *server_address) {
+  int result = inet_pton(
+    AF_INET, ip, &(server_address->sin_addr));
+  if (!result) {
+    print_and_exit("Invalid IP", 1);
+  }
+}
+
+void set_port(
+  char *port, struct sockaddr_in *server_address) {
+  if (strlen(port) == 0) {
+    print_and_exit("Invalid Port: empty", 1);
+  }
+
+  char *endptr;
+  long port_check = strtol(port, &endptr, 10);
+  if (!(*endptr == '\0')) {
+    print_and_exit(
+      "Invalid Port: must only contain numbers", 1);
+  }
+
+  if (!(port_check >= 0 && port_check <= 65535)) {
+    print_and_exit("Invalid Port: must be 0-65535", 1);
+  }
+
+  server_address->sin_port = htons(port_check);
+}
+
+int create_server(struct sockaddr_in *server_address) {
+  int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (server_fd == -1) perror("Socket");
+  int optval = 1;
+  setsockopt(
+    server_fd, SOL_SOCKET, SO_REUSEADDR,
+    &optval, sizeof(optval));
+
+  int bind_result = bind(
+    server_fd, (struct sockaddr *)server_address,
+    sizeof(*server_address));
+  if (bind_result == -1) perror("Bind");
+
+  if (listen(server_fd, 10) == -1) perror("Listen");
+  return server_fd;
+}
+
 int main(int argc, char **argv) {
   struct sockaddr_in server_address;
   server_address.sin_family = AF_INET;
+
   switch(argc) {
     case 1:
       set_ip("127.0.0.1", &server_address);
@@ -316,10 +331,12 @@ int main(int argc, char **argv) {
   }
 
   int server_fd = create_server(&server_address);
+
   printf(
     "Server created at: http://%s:%d\n",
     inet_ntoa(server_address.sin_addr),
     ntohs(server_address.sin_port));
+
   for (;;) {
     accept_connection(server_fd);
   }
