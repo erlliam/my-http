@@ -6,6 +6,8 @@
 #include <ctype.h>
 #include <string.h>
 
+#define ROOT_PATH "/home/altair/projects/my-http/TRASH/"
+
 int is_crlf(char *string) {
   if (*string == '\r') {
     if (*(string + 1) == '\n') {
@@ -26,6 +28,17 @@ int has_empty_line(char *string, size_t size) {
   }
 
   return 0;
+}
+
+int get_file_size(FILE *file) {
+  int previous_location = ftell(file);
+
+  fseek(file, 0, SEEK_END);
+  int file_size = ftell(file);
+
+  fseek(file, previous_location, SEEK_SET);
+
+  return file_size;
 }
 
 int fill_buffer_with_request(int fd, char *buffer,
@@ -173,6 +186,47 @@ struct status_line *make_status_line(char *version,
 void actual_send_response(int fd, struct status_line,
   struct headers, char *body);
 
+FILE *get_file(char *file_name) {
+  size_t path_size = strlen(ROOT_PATH) + strlen(file_name);
+  char *file_path = malloc(path_size + 1);
+  snprintf(file_path, path_size + 1,
+    "%s%s", ROOT_PATH, file_name);
+
+  FILE *file = fopen(file_path, "r");
+  free(file_path);
+
+  if (file == NULL) {
+    return NULL;
+  }
+
+  return file;
+}
+
+void send_404_response(int fd) {
+  char headers_format[] =
+    "Content-Type: text/html\r\n"
+    "Content-Length: %ld\r\n";
+
+  size_t content_length = 69;
+  size_t header_size = snprintf(NULL, 0,
+    headers_format, content_length);
+
+  char *headers = malloc(header_size + 1);
+  snprintf(headers, header_size + 1,
+    headers_format, content_length);
+
+  char status_line[] = "HTTP/1.1 404 Not Found\r\n";
+  char empty_line[] = "\r\n";
+
+  FILE *html = get_file("404.html");
+  int html_size = get_file_size(html);
+
+  send(fd, status_line, strlen(status_line), 0);
+  send(fd, headers, strlen(headers), 0);
+  send(fd, empty_line, strlen(empty_line), 0);
+  send(fd, "<p>Hi</p>", strlen("<p>Hi</p>"), 0);
+}
+
 int send_response(int client_fd,
   struct request_line request_line)
 {
@@ -218,7 +272,6 @@ int send_response(int client_fd,
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: text/html\r\n"
     "\r\n";
-  char not_found_404[] = "HTTP/1.1 404 Not Found\r\n\r\n";
 
   puts(request_line.target);
 
@@ -226,9 +279,8 @@ int send_response(int client_fd,
   FILE *target_file = fopen(target, "r");
   if (target_file == NULL) {
     puts("File not found");
-    send(client_fd, not_found_404,
-      strlen(not_found_404), 0);
     // Send 404 not found.
+    send_404_response(client_fd);
     return -1;
   }
 
