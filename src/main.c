@@ -18,7 +18,6 @@ int is_crlf(char *string) {
 
 int has_empty_line(char *string, size_t size) {
   for (size_t i = 0; size - i >= 4; i++) {
-
     if (is_crlf(string + i)) {
       if (is_crlf(string + (i + 2))) {
         return 1;
@@ -69,27 +68,11 @@ int fill_buffer_with_request(int fd, char *buffer,
       {
         break;
       }
-
     }
-
   }
   buffer[total_bytes] = '\0';
+
   return 1;
-}
-
-
-struct request_line {
-  char *method;
-  char *target;
-  char *version;
-};
-
-void malloc_and_memcpy(char **string, size_t size, 
-  char *start)
-{
-  *string = malloc(size + 1);
-  memcpy(*string, start, size);
-  (*string)[size] = '\0';
 }
 
 int has_valid_request_line(char *string) {
@@ -99,12 +82,9 @@ int has_valid_request_line(char *string) {
   for (char *c = string; *c != '\0'; c++) {
     if (*c == ' ') {
       space_count++;
-    } else if (*c == '\r') {
-      char *next = c + 1;
-      if (*next != '\0' && *next == '\n') {
-        crlf_count++;
-        break;
-      }
+    } else if (is_crlf(c)) {
+      crlf_count++;
+      break;
     }
   }
 
@@ -115,9 +95,21 @@ int has_valid_request_line(char *string) {
   return 0;
 }
 
+void malloc_and_memcpy(char **string, size_t size, 
+  char *start)
+{
+  *string = malloc(size + 1);
+  memcpy(*string, start, size);
+  (*string)[size] = '\0';
+}
+
+struct request_line {
+  char *method;
+  char *target;
+  char *version;
+};
+
 struct request_line *get_request_line(char *data) {
-  // There is no error checking going on here...
-  // What could possibly go wrong?
   char *first_space = strchr(data, ' ');
   char *second_space = strchr(first_space + 1, ' ');
   char *first_cr = strchr(second_space + 1, '\r');
@@ -147,43 +139,53 @@ int get_request(int client_fd,
   struct request_line **request_line)
 {
   char *buffer = malloc(buffer_size);
+  int return_code = 0;
 
-  if (fill_buffer_with_request(
-    client_fd,
-    buffer,
-    buffer_size) == -1) return -1;
+  if (fill_buffer_with_request(client_fd, buffer,
+    buffer_size) == -1)
+  {
+    return_code = -1;
+  }
 
   if (has_valid_request_line(buffer)) {
     *request_line = get_request_line(buffer);
   } else {
-    return -1;
+    return_code = -1;
   }
 
-  return 0;
+  free(buffer);
+  return return_code;
 }
 
-char *get_extension(char *target) {
-  char *period = strchr(target, '.');
-  size_t period_index = period - target;
+struct status_line {
+  char *version;
+  char *code;
+  char *reason;
+};
 
-  size_t extension_size = strlen(target) -
-    (period_index + 1);
+struct headers {
+  char *content_type;
+};
 
-  char *extension = malloc(extension_size + 1);
+struct status_line *make_status_line(char *version,
+  char *code, char *reason);
 
-  snprintf(extension, extension_size + 1,
-    "%s", period + 1);
-
-  return extension;
-}
+void actual_send_response(int fd, struct status_line,
+  struct headers, char *body);
 
 int send_response(int client_fd,
   struct request_line request_line)
 {
+  
+  // Check if HTTP version is supported.
+  // Check if HTTP method is supported.
+  // Check if target exists.
 
-  if (strcmp(request_line.version, "HTTP/1.1")) {
-    puts("We do not support this HTTP method");
+  if (strcmp(request_line.version, "HTTP/1.1") != 0) {
+    puts("Only HTTP/1.1 is supported.");
+    return -1;
   }
+
   if (strcmp(request_line.method, "GET") != 0) {
     puts("Only GET is supported.");
     return -1;
@@ -202,9 +204,6 @@ int send_response(int client_fd,
       "%s", index_html);
   }
 
-  char *target_extension = get_extension(
-    request_line.target);
-
   char root[] = "/home/altair/projects/my-http/TRASH";
 
   size_t le_size = strlen(root) +
@@ -212,26 +211,32 @@ int send_response(int client_fd,
 
   char *target = malloc(le_size);
 
-  snprintf(target, le_size, "%s%s", root, request_line.target);
-  puts(target);
+  snprintf(target, le_size, "%s%s",
+    root, request_line.target);
 
   char status_line_headers[] =
-    "HTTP/1.1 200 OK\n"
-    "Content-Type: text/html\n"
-    "\n";
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Type: text/html\r\n"
+    "\r\n";
+  char not_found_404[] = "HTTP/1.1 404 Not Found\r\n\r\n";
 
   puts(request_line.target);
-  puts(target_extension);
 
   char message_body[1024] = {0};
-  FILE *index_file = fopen(target, "r");
-  if (index_file == NULL) puts("File not found.");
+  FILE *target_file = fopen(target, "r");
+  if (target_file == NULL) {
+    puts("File not found");
+    send(client_fd, not_found_404,
+      strlen(not_found_404), 0);
+    // Send 404 not found.
+    return -1;
+  }
 
-  fseek(index_file, 0, SEEK_END);
-  int file_size = ftell(index_file);
-  fseek(index_file, 0, SEEK_SET);
+  fseek(target_file, 0, SEEK_END);
+  int file_size = ftell(target_file);
+  fseek(target_file, 0, SEEK_SET);
 
-  fread(message_body, 1, 1024, index_file);
+  fread(message_body, 1, 1024, target_file);
 
   send(
     client_fd, status_line_headers,
@@ -242,25 +247,6 @@ int send_response(int client_fd,
     file_size, 0);
 
   return 0;
-}
-
-void read_client(int client_fd) {
-  char *buffer = malloc(buffer_size);
-  recv(
-    client_fd, buffer, buffer_size, 0);
-  puts(buffer);
-}
-
-void send_client(int client_fd) {
-  char status_line_headers[] =
-    "HTTP/1.1 200 OK\n"
-    "Content-Type: text/html\n"
-    "\n"
-    "<h1>Hi</h1>\n";
-
-  send(
-    client_fd, status_line_headers,
-    strlen(status_line_headers), 0);
 }
 
 void accept_connection(int server_fd) {
@@ -275,8 +261,15 @@ void accept_connection(int server_fd) {
     return;
   }
 
+  // validate request_line method, target, and version
+
   int response_result = send_response(client_fd,
     *request_line);
+
+  free(request_line->method);
+  free(request_line->target);
+  free(request_line->version);
+  free(request_line);
 
   if (response_result == -1) {
     close(client_fd);
