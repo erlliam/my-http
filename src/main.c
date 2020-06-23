@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <string.h>
+#include <time.h>
 
 #define ROOT_PATH "/home/altair/projects/my-http/TRASH/"
 
@@ -28,6 +29,22 @@ int has_empty_line(char *string, size_t size) {
   }
 
   return 0;
+}
+
+FILE *get_file_from_root(char *file_name) {
+  size_t path_size = strlen(ROOT_PATH) + strlen(file_name);
+  char *file_path = malloc(path_size + 1);
+  snprintf(file_path, path_size + 1,
+    "%s%s", ROOT_PATH, file_name);
+
+  FILE *file = fopen(file_path, "r");
+  free(file_path);
+
+  if (file == NULL) {
+    return NULL;
+  }
+
+  return file;
 }
 
 int get_file_size(FILE *file) {
@@ -132,7 +149,7 @@ struct request_line *get_request_line(char *data) {
   size_t version_size = first_cr - (second_space + 1);
 
   struct request_line *request_line = malloc(
-    sizeof(request_line));
+    sizeof(struct request_line));
 
   malloc_and_memcpy(&(request_line->method),
     method_size, data);
@@ -186,45 +203,45 @@ struct status_line *make_status_line(char *version,
 void actual_send_response(int fd, struct status_line,
   struct headers, char *body);
 
-FILE *get_file(char *file_name) {
-  size_t path_size = strlen(ROOT_PATH) + strlen(file_name);
-  char *file_path = malloc(path_size + 1);
-  snprintf(file_path, path_size + 1,
-    "%s%s", ROOT_PATH, file_name);
-
-  FILE *file = fopen(file_path, "r");
-  free(file_path);
-
-  if (file == NULL) {
-    return NULL;
-  }
-
-  return file;
-}
 
 void send_404_response(int fd) {
+  time_t now = time(NULL);
+  printf("Seconds since 00:00, Jan 1 1970 UTC:\n"
+    "\t%ld\n", now);
+
   char headers_format[] =
     "Content-Type: text/html\r\n"
     "Content-Length: %ld\r\n";
 
-  size_t content_length = 69;
-  size_t header_size = snprintf(NULL, 0,
-    headers_format, content_length);
+  FILE *html = get_file_from_root("404.html");
+  if (html == NULL) {
+    puts("404 file is missing");
+    return;
+  }
 
-  char *headers = malloc(header_size + 1);
-  snprintf(headers, header_size + 1,
-    headers_format, content_length);
+  int html_size = get_file_size(html);
+
+  size_t header_size = snprintf(NULL, 0,
+    headers_format, html_size) + 1;
+  char *headers = malloc(header_size);
+  snprintf(headers, header_size,
+    headers_format, html_size);
+
+  char *body = malloc(html_size);
+  size_t body_size = fread(body, 1, html_size, html);
 
   char status_line[] = "HTTP/1.1 404 Not Found\r\n";
   char empty_line[] = "\r\n";
 
-  FILE *html = get_file("404.html");
-  int html_size = get_file_size(html);
-
   send(fd, status_line, strlen(status_line), 0);
   send(fd, headers, strlen(headers), 0);
   send(fd, empty_line, strlen(empty_line), 0);
-  send(fd, "<p>Hi</p>", strlen("<p>Hi</p>"), 0);
+  send(fd, body, body_size, 0);
+
+  free(headers);
+  free(body);
+  fclose(html);
+  puts(status_line);
 }
 
 int send_response(int client_fd,
@@ -278,8 +295,6 @@ int send_response(int client_fd,
   char message_body[1024] = {0};
   FILE *target_file = fopen(target, "r");
   if (target_file == NULL) {
-    puts("File not found");
-    // Send 404 not found.
     send_404_response(client_fd);
     return -1;
   }
