@@ -198,11 +198,26 @@ int is_null(char *character) {
 void parse_request(char *request_buffer) {
   char *request_line_start = request_buffer;
   char *request_line_end;
+  size_t request_line_length;
 
   char *first_cr = strchr(request_buffer, '\r');
-  if (is_crlf(first_cr)) {
-     request_line_end = first_cr - 1;
+
+  if (first_cr == NULL) {
+    puts("Invalid format.");
+    return;
+  } else if (is_crlf(first_cr)) {
+    request_line_end = first_cr - 1;
+    request_line_length = request_line_end -
+      request_line_start;
   }
+
+  for (size_t i=0; i <= request_line_length; i++) {
+    printf("%c", *(request_line_start + i));
+  }
+
+  puts("");
+
+  printf("%ld\n", request_line_length);
 
   char *headers_start = first_cr + 2;
   char *headers_end;
@@ -217,24 +232,7 @@ void parse_request(char *request_buffer) {
     }
   }
 
-  size_t request_line_length = request_line_end - request_line_start;
-
-  puts("");
-  for (size_t i = 0; i <= request_line_length; i++) {
-    printf("%c", *(request_line_start + i));
-  }
-  puts("");
-
   size_t headers_length = headers_end - headers_start;
-
-  puts("");
-  for (size_t i = 0; i <= headers_length; i++) {
-    printf("%c", *(headers_start + i));
-  }
-  puts("\n");
-
-  char *body_start;
-  char *body_end;
 }
 
 int get_request(int client_fd,
