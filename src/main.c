@@ -9,9 +9,13 @@
 
 #define ROOT_PATH "/home/altair/projects/my-http/TRASH/"
 
+#define DEFAULT_IP "127.0.0.1"
+#define DEFAULT_PORT "5000"
+
 int is_crlf(char *string) {
   if (*string == '\r') {
-    if (*(string + 1) == '\n') {
+    char *next = string + 1;
+    if (*next != '\0' && *next == '\n') {
       return 1;
     }
   }
@@ -133,13 +137,27 @@ void malloc_and_memcpy(char **string, size_t size,
   (*string)[size] = '\0';
 }
 
-struct request_line {
+
+enum { buffer_size = 8192 };
+
+typedef struct status_line {
+  char *version;
+  char *code;
+  char *reason;
+} status_line;
+
+typedef struct request_line {
   char *method;
   char *target;
   char *version;
-};
+} request_line;
 
-struct request_line *get_request_line(char *data) {
+typedef struct header_field {
+  char *field_name;
+  char *field_value;
+} header_field;
+
+request_line *get_request_line(char *data) {
   char *first_space = strchr(data, ' ');
   char *second_space = strchr(first_space + 1, ' ');
   char *first_cr = strchr(second_space + 1, '\r');
@@ -148,26 +166,87 @@ struct request_line *get_request_line(char *data) {
   size_t target_size = second_space - (first_space + 1);
   size_t version_size = first_cr - (second_space + 1);
 
-  struct request_line *request_line = malloc(
-    sizeof(struct request_line));
+  request_line *current_request_line = malloc(
+    sizeof(request_line));
 
-  malloc_and_memcpy(&(request_line->method),
+  malloc_and_memcpy(&(current_request_line->method),
     method_size, data);
 
-  malloc_and_memcpy(&(request_line->target),
+  malloc_and_memcpy(&(current_request_line->target),
     target_size, first_space + 1);
 
-  malloc_and_memcpy(&(request_line->version),
+  malloc_and_memcpy(&(current_request_line->version),
     version_size, second_space + 1);
 
-  return request_line;
+  return current_request_line;
 }
 
-enum { buffer_size = 8192 };
+void test_code() {
+  header_field content_type = {
+    .field_name = "content-type",
+    .field_value = "text/html",
+  };
+}
+
+int is_null(char *character) {
+  if (*character == '\0') {
+    return 1;
+  }
+  return 0;
+}
+
+void parse_request(char *request_buffer) {
+  char *request_line_start = request_buffer;
+  char *request_line_end;
+
+  char *first_cr = strchr(request_buffer, '\r');
+  if (is_crlf(first_cr)) {
+     request_line_end = first_cr - 1;
+  }
+
+  char *headers_start = first_cr + 2;
+  char *headers_end;
+
+  for (char *c = headers_start; *c != '\0'; c++) {
+    if (is_crlf(c)) {
+      char *next = c + 2;
+      if (*next != '\0' && is_crlf(next)) {
+        headers_end = c - 1;
+        break;
+      }
+    }
+  }
+
+  size_t request_line_length = request_line_end - request_line_start;
+
+  puts("");
+  for (size_t i = 0; i <= request_line_length; i++) {
+    printf("%c", *(request_line_start + i));
+  }
+  puts("");
+
+  size_t headers_length = headers_end - headers_start;
+
+  puts("");
+  for (size_t i = 0; i <= headers_length; i++) {
+    printf("%c", *(headers_start + i));
+  }
+  puts("\n");
+
+  char *body_start;
+  char *body_end;
+}
 
 int get_request(int client_fd,
   struct request_line **request_line)
 {
+  // Parse request_line.
+  // Everything before first CRLF = request_line
+  // Everything after first CRLF and before the empty line
+  // Are headers
+  // Everything after the empty line is the body.
+  // We receive a content-length is we ought to parse this
+  // data.
   char *buffer = malloc(buffer_size);
   int return_code = 0;
 
@@ -176,6 +255,8 @@ int get_request(int client_fd,
   {
     return_code = -1;
   }
+
+  parse_request(buffer);
 
   if (has_valid_request_line(buffer)) {
     *request_line = get_request_line(buffer);
@@ -186,23 +267,6 @@ int get_request(int client_fd,
   free(buffer);
   return return_code;
 }
-
-struct status_line {
-  char *version;
-  char *code;
-  char *reason;
-};
-
-struct headers {
-  char *content_type;
-};
-
-struct status_line *make_status_line(char *version,
-  char *code, char *reason);
-
-void actual_send_response(int fd, struct status_line,
-  struct headers, char *body);
-
 
 void send_404_response(int fd) {
   time_t now = time(NULL);
@@ -397,13 +461,14 @@ int create_server(struct sockaddr_in *server_address) {
 }
 
 int main(int argc, char **argv) {
+  test_code();
   struct sockaddr_in server_address;
   server_address.sin_family = AF_INET;
 
   switch(argc) {
     case 1:
-      set_ip("127.0.0.1", &server_address);
-      set_port("5000", &server_address);
+      set_ip(DEFAULT_IP, &server_address);
+      set_port(DEFAULT_PORT, &server_address);
       break;
     case 2:
       set_ip(argv[1], &server_address);
