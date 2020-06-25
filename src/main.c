@@ -140,11 +140,10 @@ void malloc_and_memcpy(char **string, size_t size,
 
 enum { buffer_size = 8192 };
 
-typedef struct status_line {
-  char *version;
-  char *code;
-  char *reason;
-} status_line;
+typedef struct header_field {
+  char *field_name;
+  char *field_value;
+} header_field;
 
 typedef struct request_line {
   char *method;
@@ -152,10 +151,6 @@ typedef struct request_line {
   char *version;
 } request_line;
 
-typedef struct header_field {
-  char *field_name;
-  char *field_value;
-} header_field;
 
 request_line *get_request_line(char *data) {
   char *first_space = strchr(data, ' ');
@@ -182,10 +177,6 @@ request_line *get_request_line(char *data) {
 }
 
 void test_code() {
-  header_field content_type = {
-    .field_name = "content-type",
-    .field_value = "text/html",
-  };
 }
 
 int is_null(char *character) {
@@ -195,44 +186,73 @@ int is_null(char *character) {
   return 0;
 }
 
+typedef struct status_line {
+  char *version;
+  char *code;
+  char *reason;
+} status_line;
+
+request_line *extract_request_line(char **request)
+{
+  request_line *result = malloc(sizeof(
+    request_line));
+
+  char *first_space = strchr(*request, ' ');
+  if (!first_space) return 0;
+
+  char *second_space = strchr(first_space + 1, ' ');
+  if (!second_space) return 0;
+
+  char *carriage_return = strchr(second_space + 1, '\r');
+  if (!carriage_return && !is_crlf(carriage_return))
+  return 0;
+
+  result->method = *request;
+  result->target = first_space + 1;
+  result->version = second_space + 1;
+
+  *first_space = '\0';
+  *second_space = '\0';
+  *carriage_return ='\0';
+
+  *request = carriage_return + 2;
+
+  return result;
+}
+
+void extract_headers(char **request) {
+  puts(*request);
+}
+
+
 void parse_request(char *request_buffer) {
-  char *request_line_start = request_buffer;
-  char *request_line_end;
-  size_t request_line_length;
+  char *my_angel = malloc(buffer_size);
+  snprintf(my_angel, buffer_size, "%s", request_buffer);
 
-  char *first_cr = strchr(request_buffer, '\r');
+  request_line *client_request_line = extract_request_line(
+    &my_angel);
 
-  if (first_cr == NULL) {
-    puts("Invalid format.");
-    return;
-  } else if (is_crlf(first_cr)) {
-    request_line_end = first_cr - 1;
-    request_line_length = request_line_end -
-      request_line_start;
+  if (!client_request_line) {
+    puts("Invalid request line format");
+    puts("EXIT ME!");
   }
 
-  for (size_t i=0; i <= request_line_length; i++) {
-    printf("%c", *(request_line_start + i));
-  }
+  extract_headers(&my_angel);
 
-  puts("");
+  puts(client_request_line->method);
+  puts(client_request_line->target);
+  puts(client_request_line->version);
 
-  printf("%ld\n", request_line_length);
+  // for (char *c = headers_start; *c != '\0'; c++) {
+  //   if (is_crlf(c)) {
+  //     char *next = c + 2;
+  //     if (*next != '\0' && is_crlf(next)) {
+  //       headers_end = c - 1;
+  //       break;
+  //     }
+  //   }
+  // }
 
-  char *headers_start = first_cr + 2;
-  char *headers_end;
-
-  for (char *c = headers_start; *c != '\0'; c++) {
-    if (is_crlf(c)) {
-      char *next = c + 2;
-      if (*next != '\0' && is_crlf(next)) {
-        headers_end = c - 1;
-        break;
-      }
-    }
-  }
-
-  size_t headers_length = headers_end - headers_start;
 }
 
 int get_request(int client_fd,
