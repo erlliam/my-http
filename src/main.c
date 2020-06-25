@@ -220,8 +220,44 @@ request_line *extract_request_line(char **request)
   return result;
 }
 
-void extract_headers(char **request) {
-  puts(*request);
+int is_whitespace(char *target) {
+  if (*target == ' ' || *target == '\t') {
+    return 1;
+  }
+  return 0;
+}
+
+char *find_whitespace(char *start) {
+  for (char *c = start; *c != '\0'; c++) {
+    if (is_whitespace(c)) {
+      return c;
+    }
+  }
+  return 0;
+}
+
+char *find_non_whitespace(char *string) {
+  for (char *c = string; *c != '\0'; c++) {
+    if (!is_whitespace(c)) {
+      return c;
+    }
+  }
+  return 0;
+}
+
+int extract_headers(char **request) {
+  char *colon = strchr(*request, ':');
+  if (!colon) return 0;
+
+  char *field_value = find_non_whitespace(colon + 1);
+  if (!field_value) return 0;
+
+  for (char *c=field_value;*c!='\0';c++) {
+    printf("Char: |%c|\n", *c);
+  }
+
+  puts(field_value);
+  return 1;
 }
 
 
@@ -237,22 +273,11 @@ void parse_request(char *request_buffer) {
     puts("EXIT ME!");
   }
 
-  extract_headers(&my_angel);
-
   puts(client_request_line->method);
   puts(client_request_line->target);
   puts(client_request_line->version);
 
-  // for (char *c = headers_start; *c != '\0'; c++) {
-  //   if (is_crlf(c)) {
-  //     char *next = c + 2;
-  //     if (*next != '\0' && is_crlf(next)) {
-  //       headers_end = c - 1;
-  //       break;
-  //     }
-  //   }
-  // }
-
+  extract_headers(&my_angel);
 }
 
 int get_request(int client_fd,
@@ -371,8 +396,6 @@ int send_response(int client_fd,
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: text/html\r\n"
     "\r\n";
-
-  puts(request_line.target);
 
   char message_body[1024] = {0};
   FILE *target_file = fopen(target, "r");
