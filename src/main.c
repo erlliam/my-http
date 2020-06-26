@@ -5,12 +5,13 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <string.h>
-#include <time.h>
 
 #define ROOT_PATH "/home/altair/projects/my-http/TRASH/"
 
 #define DEFAULT_IP "127.0.0.1"
 #define DEFAULT_PORT "5000"
+
+#define BUFFER_SIZE 8192
 
 _Bool is_crlf(char *target) {
   if (*target == '\r') {
@@ -19,13 +20,50 @@ _Bool is_crlf(char *target) {
       return 1;
     }
   }
+
   return 0;
 }
 
-int has_empty_line(char *string, size_t size) {
+// V(isible)CHAR
+
+_Bool is_vchar(char *target) {
+  if (*target >= 33 && *target <= 126) {
+    return 1;
+  }
+
+  return 0;
+}
+
+const char delimiters[] = {
+  '"', '(', ')', ',', '/', ':', ';', '<', '=', '>', '?',
+  '@', '[', '\\', ']', '{', '}', '\0' };
+
+// T(oken)CHAR is any VCHAR, except delimiters
+
+_Bool is_tchar(char *target) {
+  for (const char *c = delimiters; *c != '\0'; c++) {
+    if (!is_vchar(target) || *target == *c) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+// RFC Whitespace: SP HTAB
+
+_Bool is_whitespace(char *character) {
+  if (*character == ' ' || *character == '\t') {
+    return 1;
+  }
+
+  return 0;
+}
+
+_Bool has_empty_line(char *target, size_t size) {
   for (size_t i = 0; size - i >= 4; i++) {
-    if (is_crlf(string + i)) {
-      if (is_crlf(string + (i + 2))) {
+    if (is_crlf(target + i)) {
+      if (is_crlf(target + (i + 2))) {
         return 1;
       }
     }
@@ -61,7 +99,7 @@ int get_file_size(FILE *file) {
   return file_size;
 }
 
-int fill_buffer_with_request(int fd, char *buffer,
+_Bool fill_buffer_with_request(int fd, char *buffer,
   size_t size)
 {
   size_t total_bytes = 0;
@@ -76,16 +114,16 @@ int fill_buffer_with_request(int fd, char *buffer,
 
     if (received_bytes == -1) {
       perror("Recv");
-      return -1;
+      return 0;
     } else if (received_bytes == 0) {
       puts("Connection closed");
-      return -1;
+      return 0;
     }
 
     total_bytes += received_bytes;
     if (total_bytes == buffer_capacity) {
       puts("Buffer is not big enough");
-      return -1;
+      return 0;
     }
 
     bytes_available -= received_bytes;
@@ -108,97 +146,14 @@ int fill_buffer_with_request(int fd, char *buffer,
   return 1;
 }
 
-int has_valid_request_line(char *string) {
-  size_t space_count = 0;
-  size_t crlf_count = 0;
-
-  for (char *c = string; *c != '\0'; c++) {
-    if (*c == ' ') {
-      space_count++;
-    } else if (is_crlf(c)) {
-      crlf_count++;
-      break;
-    }
-  }
-
-  if (space_count == 2 && crlf_count == 1) {
-    return 1;
-  }
-
-  return 0;
-}
-
-void malloc_and_memcpy(char **string, size_t size, 
-  char *start)
-{
-  *string = malloc(size + 1);
-  memcpy(*string, start, size);
-  (*string)[size] = '\0';
-}
-
-
-enum { buffer_size = 8192 };
-
-
 typedef struct request_line {
   char *method;
   char *target;
   char *version;
 } request_line;
 
-typedef struct header_field {
-  char *field_name;
-  char *field_value;
-} header_field;
-
-// Visible (printable char)
-// hex: 21-7e
-// decimal: 33-126
-
-_Bool is_vchar(char *target) {
-  if (*target >= 33 && *target <= 126) {
-    return 1;
-  }
-  return 0;
-}
-
-// Delimiters DQUOTE and "(),/:;<=>?@[\]{}"
-// tchar is any VCHAR, except delimiters
-
-const char delimiters[] = {
-  '"', '(', ')', ',', '/', ':', ';', '<', '=', '>', '?',
-  '@', '[', '\\', ']', '{', '}', '\0' };
-
-
-_Bool is_tchar(char *target) {
-  for (const char *c = delimiters; *c != '\0'; c++) {
-    if (!is_vchar(target) || *target == *c) {
-      return 0;
-    }
-  }
-  return 1;
-}
-
-void test_code() {
-}
-
-_Bool is_null(char *character) {
-  if (*character == '\0') {
-    return 1;
-  }
-  return 0;
-}
-
-typedef struct status_line {
-  char *version;
-  char *code;
-  char *reason;
-} status_line;
-
 request_line *extract_request_line(char **request)
 {
-  // TODO: Figure out what the target whitelist is
-  // Figure out what the HTTP version whitelist is.
   request_line *result = malloc(sizeof(
     request_line));
 
@@ -213,6 +168,9 @@ request_line *extract_request_line(char **request)
   }
 
   if (!first_space) return NULL;
+
+  // TODO: Figure out what the target whitelist is
+  // Figure out what the HTTP version whitelist is.
 
   char *second_space = strchr(first_space + 1, ' ');
   if (!second_space) return NULL;
@@ -234,41 +192,10 @@ request_line *extract_request_line(char **request)
   return result;
 }
 
-// Whitespace SP HTAB
-
-_Bool is_whitespace(char *character) {
-  if (*character == ' ' || *character == '\t') {
-    return 1;
-  }
-  return 0;
-}
-
-char *find_whitespace(char *start) {
-  for (char *c = start; *c != '\0'; c++) {
-    if (is_whitespace(c)) {
-      return c;
-    }
-  }
-  return 0;
-}
-
-char *find_non_whitespace(char *string) {
-  for (char *c = string; *c != '\0'; c++) {
-    if (!is_whitespace(c)) {
-      return c;
-    }
-  }
-  return 0;
-}
-
 void next_line(char **request) {
+  puts(*request);
   puts("Implement me.");
 }
-
-// By this point the request_line is extracted.
-// request is the char after the first CRLF
-// next_line function is not yet written.
-// It will move the pointer request to the next line.
 
 int extract_headers(char **request) {
   char *colon = NULL;
@@ -278,6 +205,7 @@ int extract_headers(char **request) {
         colon = c;
         break;
       }
+
       break;
     }
   }
@@ -338,10 +266,6 @@ int extract_headers(char **request) {
   // Field value
   puts(field_value);
   
-  // Should I do a linked list?
-  // RFC recommends hash table but I don't know how to
-  // make one
-
   *request = carriage_return + 2;
   return 1;
 }
@@ -364,11 +288,11 @@ _Bool parse_request(char *request_buffer,
 }
 
 int get_request(int client_fd,
-  struct request_line **request_line)
+ request_line **request_line)
 {
-  char *buffer = malloc(buffer_size);
-  if (fill_buffer_with_request(client_fd, buffer,
-    buffer_size) == -1) return -1;
+  char *buffer = malloc(BUFFER_SIZE);
+  if (!fill_buffer_with_request(client_fd, buffer,
+    BUFFER_SIZE)) return -1;
 
   if (!parse_request(buffer, request_line)) return -1;
 
@@ -376,10 +300,6 @@ int get_request(int client_fd,
 }
 
 void send_404_response(int fd) {
-  time_t now = time(NULL);
-  printf("Seconds since 00:00, Jan 1 1970 UTC:\n"
-    "\t%ld\n", now);
-
   char headers_format[] =
     "Content-Type: text/html\r\n"
     "Content-Length: %ld\r\n";
@@ -416,7 +336,7 @@ void send_404_response(int fd) {
 }
 
 int send_response(int client_fd,
-  struct request_line request_line)
+  request_line request_line)
 {
   if (strcmp(request_line.version, "HTTP/1.1") != 0) {
     puts("Only HTTP/1.1 is supported.");
@@ -458,9 +378,10 @@ int send_response(int client_fd,
 
   char message_body[1024] = {0};
   FILE *target_file = fopen(target, "r");
+
   if (target_file == NULL) {
     send_404_response(client_fd);
-    return -1;
+    return 404;
   }
 
   fseek(target_file, 0, SEEK_END);
@@ -482,7 +403,7 @@ int send_response(int client_fd,
 
 void accept_connection(int server_fd) {
   int client_fd = accept(server_fd, NULL, NULL);
-  struct request_line *request_line;
+  request_line *request_line;
 
   int request_result = get_request(client_fd,
     &request_line);
@@ -554,7 +475,6 @@ int create_server(struct sockaddr_in *server_address) {
 }
 
 int main(int argc, char **argv) {
-  test_code();
   struct sockaddr_in server_address;
   server_address.sin_family = AF_INET;
 
