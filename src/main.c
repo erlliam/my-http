@@ -12,14 +12,13 @@
 #define DEFAULT_IP "127.0.0.1"
 #define DEFAULT_PORT "5000"
 
-int is_crlf(char *string) {
-  if (*string == '\r') {
-    char *next = string + 1;
+_Bool is_crlf(char *target) {
+  if (*target == '\r') {
+    char *next = target + 1;
     if (*next != '\0' && *next == '\n') {
       return 1;
     }
   }
-
   return 0;
 }
 
@@ -140,16 +139,17 @@ void malloc_and_memcpy(char **string, size_t size,
 
 enum { buffer_size = 8192 };
 
-typedef struct header_field {
-  char *field_name;
-  char *field_value;
-} header_field;
 
 typedef struct request_line {
   char *method;
   char *target;
   char *version;
 } request_line;
+
+typedef struct header_field {
+  char *field_name;
+  char *field_value;
+} header_field;
 
 
 request_line *get_request_line(char *data) {
@@ -180,8 +180,8 @@ request_line *get_request_line(char *data) {
 // hex: 21-7e
 // decimal: 33-126
 
-_Bool is_vchar(char *character) {
-  if (*character >= 33 && *character <= 126) {
+_Bool is_vchar(char *target) {
+  if (*target >= 33 && *target <= 126) {
     return 1;
   }
   return 0;
@@ -196,7 +196,7 @@ const char delimiters[] = {
 
 
 _Bool is_tchar(char *target) {
-  for (char *c = delimiters; *c != '\0'; c++) {
+  for (const char *c = delimiters; *c != '\0'; c++) {
     if (!is_vchar(target) || *target == *c) {
       return 0;
     }
@@ -205,13 +205,6 @@ _Bool is_tchar(char *target) {
 }
 
 void test_code() {
-  char example[] = "Content-Type";
-  for (char *c = example; *c != '\0'; c++) {
-    if (!is_tchar(c)) {
-      puts("Uh oh..");
-      puts(example);
-    }
-  }
 }
 
 _Bool is_null(char *character) {
@@ -229,11 +222,22 @@ typedef struct status_line {
 
 request_line *extract_request_line(char **request)
 {
+  // TODO: Figure out what the target whitelist is
+  // Figure out what the HTTP version whitelist is.
   request_line *result = malloc(sizeof(
     request_line));
 
-  char *first_space = strchr(*request, ' ');
-  if (!first_space) return 0;
+  char *first_space = NULL;
+  for (char *c = *request; *c != '\0'; c++) {
+    if (!is_tchar(c)) {
+      if (*c == ' ') {
+        first_space = c;
+      }
+      break;
+    }
+  }
+
+  if (!first_space) return NULL;
 
   char *second_space = strchr(first_space + 1, ' ');
   if (!second_space) return 0;
@@ -255,11 +259,9 @@ request_line *extract_request_line(char **request)
   return result;
 }
 
-// Whitespace
-// SP HTAB
-// 20 
+// Whitespace SP HTAB
 
-int is_whitespace(char *character) {
+_Bool is_whitespace(char *character) {
   if (*character == ' ' || *character == '\t') {
     return 1;
   }
@@ -284,9 +286,17 @@ char *find_non_whitespace(char *string) {
   return 0;
 }
 
+void next_line(char **request) {
+  puts("Implement me.");
+}
+
+// By this point the request_line is extracted.
+// request is the char after the first CRLF
+// next_line function is not yet written.
+// It will move the pointer request to the next line.
+
 int extract_headers(char **request) {
   char *colon = NULL;
-
   for (char *c = *request; *c != '\0'; c++) {
     if (!is_tchar(c)) {
       if (*c == ':') {
@@ -298,12 +308,11 @@ int extract_headers(char **request) {
   }
 
   if (!colon) {
-    // We need to exit the line...
-    // Invalid format.
+    next_line(request);
     return 0;
   }
 
-  char *field_value = 0;
+  char *field_value = NULL;
   for (char *c = colon + 1; *c !='\0'; c++) {
     if (is_vchar(c)) {
       field_value = c;
@@ -316,13 +325,13 @@ int extract_headers(char **request) {
   }
 
   if (!field_value) {
-    // We need to exit the line...
-    // Invalid format.
+    next_line(request);
+    return 0;
   }
 
-  char *last_vchar = 0;
-  char *carriage_return = 0;
-  for (char *c = colon + 1; *c !='\0'; c++) {
+  char *last_vchar = NULL;
+  char *carriage_return = NULL;
+  for (char *c = field_value + 1; *c !='\0'; c++) {
     if (is_vchar(c)) {
       last_vchar = c;
     } else if (is_whitespace(c)) {
@@ -337,78 +346,58 @@ int extract_headers(char **request) {
   }
 
   if (!last_vchar) {
-    // We need to exit the line...
-    // Invalid format.
+    next_line(request);
     return 0;
   }
+
   if (!carriage_return) {
-    // Really big error.
-    // We need to exit the line...
-    // Invalid format.
+    // Really big error. Not sure if this ever happens.
     return 0;
   }
 
   *colon = '\0';
   *(last_vchar + 1) = '\0';
 
+  // Field name
   puts(*request);
+  // Field value
   puts(field_value);
+  
+  // Should I do a linked list?
+  // RFC recommends hash table but I don't know how to
+  // make one
 
   *request = carriage_return + 2;
-  puts(*request);
-
   return 1;
 }
 
 
-void parse_request(char *request_buffer) {
-  char *my_angel = malloc(buffer_size);
-  snprintf(my_angel, buffer_size, "%s", request_buffer);
-
-  request_line *client_request_line = extract_request_line(
-    &my_angel);
+_Bool parse_request(char *request_buffer,
+  request_line **client_request_line)
+{
+  *client_request_line = extract_request_line(
+    &request_buffer);
 
   if (!client_request_line) {
     puts("Invalid request line format");
-    puts("EXIT ME!");
+    return 0;
   }
 
-  puts(client_request_line->method);
-  puts(client_request_line->target);
-  puts(client_request_line->version);
+  extract_headers(&request_buffer);
 
-  extract_headers(&my_angel);
+  return 1;
 }
 
 int get_request(int client_fd,
   struct request_line **request_line)
 {
-  // Parse request_line.
-  // Everything before first CRLF = request_line
-  // Everything after first CRLF and before the empty line
-  // Are headers
-  // Everything after the empty line is the body.
-  // We receive a content-length is we ought to parse this
-  // data.
   char *buffer = malloc(buffer_size);
-  int return_code = 0;
-
   if (fill_buffer_with_request(client_fd, buffer,
-    buffer_size) == -1)
-  {
-    return_code = -1;
-  }
+    buffer_size) == -1) return -1;
 
-  parse_request(buffer);
+  if (!parse_request(buffer, request_line)) return -1;
 
-  if (has_valid_request_line(buffer)) {
-    *request_line = get_request_line(buffer);
-  } else {
-    return_code = -1;
-  }
-
-  free(buffer);
-  return return_code;
+  return 1;
 }
 
 void send_404_response(int fd) {
@@ -454,11 +443,6 @@ void send_404_response(int fd) {
 int send_response(int client_fd,
   struct request_line request_line)
 {
-  
-  // Check if HTTP version is supported.
-  // Check if HTTP method is supported.
-  // Check if target exists.
-
   if (strcmp(request_line.version, "HTTP/1.1") != 0) {
     puts("Only HTTP/1.1 is supported.");
     return -1;
@@ -533,15 +517,8 @@ void accept_connection(int server_fd) {
     return;
   }
 
-  // validate request_line method, target, and version
-
   int response_result = send_response(client_fd,
     *request_line);
-
-  free(request_line->method);
-  free(request_line->target);
-  free(request_line->version);
-  free(request_line);
 
   if (response_result == -1) {
     close(client_fd);
