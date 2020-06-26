@@ -151,31 +151,6 @@ typedef struct header_field {
   char *field_value;
 } header_field;
 
-
-request_line *get_request_line(char *data) {
-  char *first_space = strchr(data, ' ');
-  char *second_space = strchr(first_space + 1, ' ');
-  char *first_cr = strchr(second_space + 1, '\r');
-
-  size_t method_size = first_space - data;
-  size_t target_size = second_space - (first_space + 1);
-  size_t version_size = first_cr - (second_space + 1);
-
-  request_line *current_request_line = malloc(
-    sizeof(request_line));
-
-  malloc_and_memcpy(&(current_request_line->method),
-    method_size, data);
-
-  malloc_and_memcpy(&(current_request_line->target),
-    target_size, first_space + 1);
-
-  malloc_and_memcpy(&(current_request_line->version),
-    version_size, second_space + 1);
-
-  return current_request_line;
-}
-
 // Visible (printable char)
 // hex: 21-7e
 // decimal: 33-126
@@ -240,7 +215,7 @@ request_line *extract_request_line(char **request)
   if (!first_space) return NULL;
 
   char *second_space = strchr(first_space + 1, ' ');
-  if (!second_space) return 0;
+  if (!second_space) return NULL;
 
   char *carriage_return = strchr(second_space + 1, '\r');
   if (!carriage_return && !is_crlf(carriage_return))
