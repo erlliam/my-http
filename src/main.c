@@ -176,10 +176,45 @@ request_line *get_request_line(char *data) {
   return current_request_line;
 }
 
-void test_code() {
+// Visible (printable char)
+// hex: 21-7e
+// decimal: 33-126
+
+_Bool is_vchar(char *character) {
+  if (*character >= 33 && *character <= 126) {
+    return 1;
+  }
+  return 0;
 }
 
-int is_null(char *character) {
+// Delimiters DQUOTE and "(),/:;<=>?@[\]{}"
+// tchar is any VCHAR, except delimiters
+
+const char delimiters[] = {
+  '"', '(', ')', ',', '/', ':', ';', '<', '=', '>', '?',
+  '@', '[', '\\', ']', '{', '}', '\0' };
+
+
+_Bool is_tchar(char *target) {
+  for (char *c = delimiters; *c != '\0'; c++) {
+    if (!is_vchar(target) || *target == *c) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+void test_code() {
+  char example[] = "Content-Type";
+  for (char *c = example; *c != '\0'; c++) {
+    if (!is_tchar(c)) {
+      puts("Uh oh..");
+      puts(example);
+    }
+  }
+}
+
+_Bool is_null(char *character) {
   if (*character == '\0') {
     return 1;
   }
@@ -205,7 +240,7 @@ request_line *extract_request_line(char **request)
 
   char *carriage_return = strchr(second_space + 1, '\r');
   if (!carriage_return && !is_crlf(carriage_return))
-  return 0;
+    return 0;
 
   result->method = *request;
   result->target = first_space + 1;
@@ -220,8 +255,12 @@ request_line *extract_request_line(char **request)
   return result;
 }
 
-int is_whitespace(char *target) {
-  if (*target == ' ' || *target == '\t') {
+// Whitespace
+// SP HTAB
+// 20 
+
+int is_whitespace(char *character) {
+  if (*character == ' ' || *character == '\t') {
     return 1;
   }
   return 0;
@@ -246,17 +285,78 @@ char *find_non_whitespace(char *string) {
 }
 
 int extract_headers(char **request) {
-  char *colon = strchr(*request, ':');
-  if (!colon) return 0;
+  char *colon = NULL;
 
-  char *field_value = find_non_whitespace(colon + 1);
-  if (!field_value) return 0;
-
-  for (char *c=field_value;*c!='\0';c++) {
-    printf("Char: |%c|\n", *c);
+  for (char *c = *request; *c != '\0'; c++) {
+    if (!is_tchar(c)) {
+      if (*c == ':') {
+        colon = c;
+        break;
+      }
+      break;
+    }
   }
 
+  if (!colon) {
+    // We need to exit the line...
+    // Invalid format.
+    return 0;
+  }
+
+  char *field_value = 0;
+  for (char *c = colon + 1; *c !='\0'; c++) {
+    if (is_vchar(c)) {
+      field_value = c;
+      break;
+    } else if (is_whitespace(c)) {
+      // Skip whitespace.
+    } else {
+      break;
+    }
+  }
+
+  if (!field_value) {
+    // We need to exit the line...
+    // Invalid format.
+  }
+
+  char *last_vchar = 0;
+  char *carriage_return = 0;
+  for (char *c = colon + 1; *c !='\0'; c++) {
+    if (is_vchar(c)) {
+      last_vchar = c;
+    } else if (is_whitespace(c)) {
+      // Skip whitespace.
+    } else if (is_crlf(c)) {
+      carriage_return = c;
+      break;
+    } else {
+      last_vchar = NULL;
+      break;
+    }
+  }
+
+  if (!last_vchar) {
+    // We need to exit the line...
+    // Invalid format.
+    return 0;
+  }
+  if (!carriage_return) {
+    // Really big error.
+    // We need to exit the line...
+    // Invalid format.
+    return 0;
+  }
+
+  *colon = '\0';
+  *(last_vchar + 1) = '\0';
+
+  puts(*request);
   puts(field_value);
+
+  *request = carriage_return + 2;
+  puts(*request);
+
   return 1;
 }
 
