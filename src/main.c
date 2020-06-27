@@ -274,7 +274,7 @@ header_field *extract_header_field(char **request) {
   return result;
 }
 
-header_field ** extract_headers(char **request) {
+header_field **extract_headers(char **request) {
   size_t headers_size = 3;
 
   header_field **headers = malloc(sizeof(header_field **) *
@@ -311,7 +311,8 @@ header_field ** extract_headers(char **request) {
 }
 
 _Bool parse_request(char *request_buffer,
-  request_line **client_request_line)
+  request_line **client_request_line,
+  header_field ***headers)
 {
   *client_request_line = extract_request_line(
     &request_buffer);
@@ -321,19 +322,21 @@ _Bool parse_request(char *request_buffer,
     return 0;
   }
 
-  extract_headers(&request_buffer);
+  *headers = extract_headers(&request_buffer);
 
   return 1;
 }
 
 int get_request(int client_fd,
- request_line **request_line)
+  request_line **request_line, char **buffer,
+  header_field ***headers)
 {
-  char *buffer = malloc(BUFFER_SIZE);
-  if (!fill_buffer_with_request(client_fd, buffer,
+  *buffer = malloc(BUFFER_SIZE);
+  if (!fill_buffer_with_request(client_fd, *buffer,
     BUFFER_SIZE)) return -1;
 
-  if (!parse_request(buffer, request_line)) return -1;
+  if (!parse_request(*buffer, request_line, headers)) 
+    return -1;
 
   return 1;
 }
@@ -443,24 +446,31 @@ int send_response(int client_fd,
 
 void accept_connection(int server_fd) {
   int client_fd = accept(server_fd, NULL, NULL);
-  request_line *request_line;
+
+  char *buffer;
+  request_line *current_request_line;
+  header_field **headers;
+
 
   int request_result = get_request(client_fd,
-    &request_line);
+    &current_request_line, &buffer, &headers);
 
   if (request_result == -1) {
+    free(buffer);
+    free(current_request_line);
     close(client_fd);
     return;
   }
 
   int response_result = send_response(client_fd,
-    *request_line);
+    *current_request_line);
 
-  if (response_result == -1) {
-    close(client_fd);
-    return;
-  }
+  response_result+=0;
 
+  puts(headers[0]->name);
+
+  free(buffer);
+  free(current_request_line);
   close(client_fd);
 }
 
