@@ -274,20 +274,40 @@ header_field *extract_header_field(char **request) {
   return result;
 }
 
-int extract_headers(char **request) {
-  header_field headers[100];
+header_field ** extract_headers(char **request) {
+  size_t headers_size = 3;
+
+  header_field **headers = malloc(sizeof(header_field **) *
+    headers_size);
 
   size_t index = 0;
-  for (index; index < 100; index++) {
-    if (is_crlf(*request)) {
-      break;
+
+  while (!is_crlf(*request)) {
+    if (index == headers_size) {
+      headers_size *= 2;
+
+      header_field **temp = realloc(headers,
+        sizeof(header_field **) * headers_size);
+
+      if (temp) {
+        headers = temp;
+      } else {
+        puts("ERROR");
+      }
     }
-    headers[index] = *(extract_header_field(request));
+
+    header_field *result = extract_header_field(request);
+    if (result) {
+      headers[index] = result;
+    } else {
+      index--;
+      // bad with size_t;
+    }
+
+    index++;
   }
 
-  printf("Headers found: %ld\n", index);
-
-  return 0;
+  return headers;
 }
 
 _Bool parse_request(char *request_buffer,
@@ -399,6 +419,7 @@ int send_response(int client_fd,
   FILE *target_file = fopen(target, "r");
 
   if (target_file == NULL) {
+    puts(request_line.target);
     send_404_response(client_fd);
     return 404;
   }
