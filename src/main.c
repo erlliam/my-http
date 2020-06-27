@@ -60,6 +60,8 @@ _Bool is_whitespace(char *character) {
   return 0;
 }
 
+// CRLFCRLF
+
 _Bool has_empty_line(char *target, size_t size) {
   for (size_t i = 0; size - i >= 4; i++) {
     if (is_crlf(target + i)) {
@@ -98,6 +100,17 @@ int get_file_size(FILE *file) {
 
   return file_size;
 }
+
+typedef struct request_line {
+  char *method;
+  char *target;
+  char *version;
+} request_line;
+
+typedef struct header_field {
+  char *name;
+  char *value;
+} header_field;
 
 _Bool fill_buffer_with_request(int fd, char *buffer,
   size_t size)
@@ -146,12 +159,6 @@ _Bool fill_buffer_with_request(int fd, char *buffer,
   return 1;
 }
 
-typedef struct request_line {
-  char *method;
-  char *target;
-  char *version;
-} request_line;
-
 request_line *extract_request_line(char **request)
 {
   request_line *result = malloc(sizeof(
@@ -192,12 +199,14 @@ request_line *extract_request_line(char **request)
   return result;
 }
 
-void next_line(char **request) {
-  puts(*request);
-  puts("Implement me.");
+void next_line(char **target) {
+  char *carriage_return = strchr(*target, '\r');
+  if (is_crlf(carriage_return)) {
+    *target = carriage_return + 2;
+  }
 }
 
-int extract_headers(char **request) {
+header_field *extract_header_field(char **request) {
   char *colon = NULL;
   for (char *c = *request; *c != '\0'; c++) {
     if (!is_tchar(c)) {
@@ -212,7 +221,7 @@ int extract_headers(char **request) {
 
   if (!colon) {
     next_line(request);
-    return 0;
+    return NULL;
   }
 
   char *field_value = NULL;
@@ -229,10 +238,10 @@ int extract_headers(char **request) {
 
   if (!field_value) {
     next_line(request);
-    return 0;
+    return NULL;
   }
 
-  char *last_vchar = NULL;
+  char *last_vchar = field_value;
   char *carriage_return = NULL;
   for (char *c = field_value + 1; *c !='\0'; c++) {
     if (is_vchar(c)) {
@@ -248,11 +257,6 @@ int extract_headers(char **request) {
     }
   }
 
-  if (!last_vchar) {
-    next_line(request);
-    return 0;
-  }
-
   if (!carriage_return) {
     // Really big error. Not sure if this ever happens.
     return 0;
@@ -261,15 +265,30 @@ int extract_headers(char **request) {
   *colon = '\0';
   *(last_vchar + 1) = '\0';
 
-  // Field name
-  puts(*request);
-  // Field value
-  puts(field_value);
+  header_field *result = malloc(sizeof(header_field));
+  result->name = *request;
+  result->value = field_value;
   
   *request = carriage_return + 2;
-  return 1;
+
+  return result;
 }
 
+int extract_headers(char **request) {
+  header_field headers[100];
+
+  size_t index = 0;
+  for (index; index < 100; index++) {
+    if (is_crlf(*request)) {
+      break;
+    }
+    headers[index] = *(extract_header_field(request));
+  }
+
+  printf("Headers found: %ld\n", index);
+
+  return 0;
+}
 
 _Bool parse_request(char *request_buffer,
   request_line **client_request_line)
