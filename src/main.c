@@ -6,7 +6,7 @@
 #include <ctype.h>
 #include <string.h>
 
-#define ROOT_PATH "/home/altair/projects/my-http/TRASH/"
+#define ROOT_PATH "/home/altair/projects/my-http/static"
 
 #define DEFAULT_IP "127.0.0.1"
 #define DEFAULT_PORT "5000"
@@ -75,30 +75,41 @@ _Bool has_empty_line(char *target, size_t size) {
 }
 
 FILE *get_file_from_root(char *file_name) {
-  size_t path_size = strlen(ROOT_PATH) + strlen(file_name);
-  char *file_path = malloc(path_size + 1);
-  snprintf(file_path, path_size + 1,
+  size_t path_size = strlen(ROOT_PATH) +
+    strlen(file_name) + 1;
+
+  char *file_path = malloc(path_size);
+  if (file_path == NULL) {
+    return NULL;
+  }
+  // Error check.
+  snprintf(file_path, path_size,
     "%s%s", ROOT_PATH, file_name);
 
   FILE *file = fopen(file_path, "r");
-  free(file_path);
 
-  if (file == NULL) {
-    return NULL;
-  }
+  free(file_path);
 
   return file;
 }
 
-int get_file_size(FILE *file) {
+size_t get_file_size(FILE *file) {
   int previous_location = ftell(file);
+  if (previous_location == -1L) {
+    return 0;
+  }
 
-  fseek(file, 0, SEEK_END);
-  int file_size = ftell(file);
+  if (fseek(file, 0, SEEK_END) == 0) {
+    int file_size = ftell(file);
+    if (file_size == -1L) {
+      return 0;
+    }
+    if(fseek(file, previous_location, SEEK_SET) == 0) {
+      return file_size;
+    }
+  }
 
-  fseek(file, previous_location, SEEK_SET);
-
-  return file_size;
+  return 0;
 }
 
 typedef struct request_line {
@@ -175,7 +186,6 @@ request_line *extract_request_line(char **request)
   }
 
   if (!first_space) return NULL;
-
   // TODO: Figure out what the target whitelist is
   // Figure out what the HTTP version whitelist is.
 
@@ -317,7 +327,7 @@ _Bool parse_request(char *request_buffer,
   *client_request_line = extract_request_line(
     &request_buffer);
 
-  if (!client_request_line) {
+  if (!(*client_request_line)) {
     puts("Invalid request line format");
     return 0;
   }
@@ -346,7 +356,7 @@ void send_404_response(int fd) {
     "Content-Type: text/html\r\n"
     "Content-Length: %ld\r\n";
 
-  FILE *html = get_file_from_root("404.html");
+  FILE *html = get_file_from_root("/404.html");
   if (html == NULL) {
     puts("404 file is missing");
     return;
@@ -403,35 +413,31 @@ int send_response(int client_fd,
       "%s", index_html);
   }
 
-  char root[] = "/home/altair/projects/my-http/TRASH";
-
-  size_t le_size = strlen(root) +
+  size_t le_size = strlen(ROOT_PATH) +
     strlen(request_line.target) + 1;
 
   char *target = malloc(le_size);
 
   snprintf(target, le_size, "%s%s",
-    root, request_line.target);
+    ROOT_PATH, request_line.target);
 
   char status_line_headers[] =
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: text/html\r\n"
     "\r\n";
 
-  char message_body[1024] = {0};
+  puts(request_line.target);
   FILE *target_file = fopen(target, "r");
 
   if (target_file == NULL) {
-    puts(request_line.target);
     send_404_response(client_fd);
     return 404;
   }
 
-  fseek(target_file, 0, SEEK_END);
-  int file_size = ftell(target_file);
-  fseek(target_file, 0, SEEK_SET);
+  size_t file_size = get_file_size(target_file);
+  char *message_body = malloc(file_size);
 
-  fread(message_body, 1, 1024, target_file);
+  fread(message_body, 1, file_size, target_file);
 
   send(
     client_fd, status_line_headers,
@@ -462,12 +468,14 @@ void accept_connection(int server_fd) {
     return;
   }
 
+  // Error check current_request_line;
+
   int response_result = send_response(client_fd,
     *current_request_line);
 
   response_result+=0;
 
-  puts(headers[0]->name);
+  // puts(headers[0]->name);
 
   free(buffer);
   free(current_request_line);
