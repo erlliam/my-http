@@ -60,6 +60,12 @@ _Bool is_whitespace(char *character) {
   return 0;
 }
 
+// TODO: Implement empty_line check with no overflow
+// _Bool is_empty_line(char *target) {
+//   if (is_crlf(target) && is_crlf(target + 2)) {
+//   }
+// }
+
 // CRLFCRLF
 
 _Bool has_empty_line(char *target, size_t size) {
@@ -79,12 +85,13 @@ FILE *get_file_from_root(char *file_name) {
     strlen(file_name) + 1;
 
   char *file_path = malloc(path_size);
-  if (file_path == NULL) {
-    return NULL;
-  }
-  // Error check.
+  if (!file_path) return (FILE *)file_path;
+
   snprintf(file_path, path_size,
     "%s%s", ROOT_PATH, file_name);
+
+  // We could check if nothing is printed. Saves an FOPEN
+  // call?
 
   FILE *file = fopen(file_path, "r");
 
@@ -95,15 +102,12 @@ FILE *get_file_from_root(char *file_name) {
 
 size_t get_file_size(FILE *file) {
   int previous_location = ftell(file);
-  if (previous_location == -1L) {
-    return 0;
-  }
+  if (previous_location == -1L) return 0;
 
   if (fseek(file, 0, SEEK_END) == 0) {
     int file_size = ftell(file);
-    if (file_size == -1L) {
-      return 0;
-    }
+    if (file_size == -1L) return 0;
+
     if(fseek(file, previous_location, SEEK_SET) == 0) {
       return file_size;
     }
@@ -345,6 +349,12 @@ int get_request(int client_fd,
   if (!fill_buffer_with_request(client_fd, *buffer,
     BUFFER_SIZE)) return -1;
 
+  // TODO
+  // We don't have enough info to know if we've allocated
+  // request_line.
+  // If we return above, we will try to free unallocated
+  // memory. Big problem.
+
   if (!parse_request(*buffer, request_line, headers)) 
     return -1;
 
@@ -352,34 +362,38 @@ int get_request(int client_fd,
 }
 
 void send_404_response(int fd) {
-  char headers_format[] =
-    "Content-Type: text/html\r\n"
-    "Content-Length: %ld\r\n";
-
   FILE *html = get_file_from_root("/404.html");
-  if (html == NULL) {
+  if (!html) {
     puts("404 file is missing");
     return;
   }
 
-  int html_size = get_file_size(html);
+  char status_line[] = "HTTP/1.1 404 Not Found\r\n";
+
+  char headers_format[] =
+    "Content-Type: text/html\r\n"
+    "Content-Length: %ld\r\n";
+
+  char empty_line[] = "\r\n";
+
+  size_t html_size = get_file_size(html);
+  char *body = malloc(html_size);
+  size_t content_length = fread(body, 1, html_size, html);
+  if (content_length != html_size) {
+    puts("content_length != html_size");
+  }
 
   size_t header_size = snprintf(NULL, 0,
-    headers_format, html_size) + 1;
+    headers_format, content_length) + 1;
   char *headers = malloc(header_size);
+
   snprintf(headers, header_size,
     headers_format, html_size);
-
-  char *body = malloc(html_size);
-  size_t body_size = fread(body, 1, html_size, html);
-
-  char status_line[] = "HTTP/1.1 404 Not Found\r\n";
-  char empty_line[] = "\r\n";
 
   send(fd, status_line, strlen(status_line), 0);
   send(fd, headers, strlen(headers), 0);
   send(fd, empty_line, strlen(empty_line), 0);
-  send(fd, body, body_size, 0);
+  send(fd, body, content_length, 0);
 
   free(headers);
   free(body);
@@ -387,51 +401,41 @@ void send_404_response(int fd) {
   puts(status_line);
 }
 
-int send_response(int client_fd,
-  request_line request_line)
+void respond_to_get(int client_fd,
+  request_line current_request_line)
 {
-  if (strcmp(request_line.version, "HTTP/1.1") != 0) {
-    puts("Only HTTP/1.1 is supported.");
-    return -1;
-  }
-
-  if (strcmp(request_line.method, "GET") != 0) {
-    puts("Only GET is supported.");
-    return -1;
-  }
-
-  char last_character = request_line.target[
-    strlen(request_line.target) - 1];
+  char last_character = current_request_line.target[
+    strlen(current_request_line.target) - 1];
 
   char index_html[] = "/index.html";
 
   if (last_character == '/') {
     size_t le_size = sizeof(index_html);
-    request_line.target = malloc(le_size);
+    current_request_line.target = malloc(le_size);
 
-    snprintf(request_line.target, le_size,
+    snprintf(current_request_line.target, le_size,
       "%s", index_html);
   }
 
   size_t le_size = strlen(ROOT_PATH) +
-    strlen(request_line.target) + 1;
+    strlen(current_request_line.target) + 1;
 
   char *target = malloc(le_size);
 
   snprintf(target, le_size, "%s%s",
-    ROOT_PATH, request_line.target);
+    ROOT_PATH, current_request_line.target);
 
   char status_line_headers[] =
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: text/html\r\n"
     "\r\n";
 
-  puts(request_line.target);
+  puts(current_request_line.target);
   FILE *target_file = fopen(target, "r");
 
   if (target_file == NULL) {
     send_404_response(client_fd);
-    return 404;
+    return;
   }
 
   size_t file_size = get_file_size(target_file);
@@ -446,7 +450,25 @@ int send_response(int client_fd,
   send(
     client_fd, message_body,
     file_size, 0);
+}
+void respond_to_head();
 
+int send_response(int client_fd,
+  request_line request_line)
+{
+  if (strcmp(request_line.version, "HTTP/1.1") != 0) {
+    puts("Only HTTP/1.1 is supported.");
+    return -1;
+  }
+
+  if (strcmp(request_line.method, "GET") == 0) {
+    respond_to_get(client_fd, request_line);
+  }
+/*
+  if (strcmp(request_line.method, "HEAD") == 0) {
+    respond_to_head();
+  }
+*/
   return 0;
 }
 
@@ -470,10 +492,8 @@ void accept_connection(int server_fd) {
 
   // Error check current_request_line;
 
-  int response_result = send_response(client_fd,
+  send_response(client_fd,
     *current_request_line);
-
-  response_result+=0;
 
   // puts(headers[0]->name);
 
