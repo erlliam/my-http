@@ -85,13 +85,18 @@ FILE *get_file_from_root(char *file_name) {
     strlen(file_name) + 1;
 
   char *file_path = malloc(path_size);
-  if (!file_path) return (FILE *)file_path;
+  if (!file_path) {
+    free(file_path);
+    return NULL;
+  }
 
-  snprintf(file_path, path_size,
+  int characters_written = snprintf(file_path, path_size,
     "%s%s", ROOT_PATH, file_name);
 
-  // We could check if nothing is printed. Saves an FOPEN
-  // call?
+  if (characters_written != (int) path_size - 1 ) {
+    free(file_path);
+    return NULL;
+  }
 
   FILE *file = fopen(file_path, "r");
 
@@ -216,6 +221,8 @@ void next_line(char **target) {
   }
 }
 
+// TODO clean up crappy code
+
 header_field *extract_header_field(char **request) {
   char *colon = NULL;
   for (char *c = *request; *c != '\0'; c++) {
@@ -223,16 +230,16 @@ header_field *extract_header_field(char **request) {
       if (*c == ':') {
         colon = c;
         break;
+      } else if (is_crlf(c)) {
+        next_line(request);
+        return NULL;
       }
 
       break;
     }
   }
 
-  if (!colon) {
-    next_line(request);
-    return NULL;
-  }
+  if (!colon) return NULL;
 
   char *field_value = NULL;
   for (char *c = colon + 1; *c !='\0'; c++) {
@@ -241,15 +248,13 @@ header_field *extract_header_field(char **request) {
       break;
     } else if (is_whitespace(c)) {
       // Skip whitespace.
-    } else {
-      break;
+    } else if (is_crlf(c)) {
+      next_line(request);
+      return NULL;
     }
   }
 
-  if (!field_value) {
-    next_line(request);
-    return NULL;
-  }
+  if (!field_value) return NULL;
 
   char *last_vchar = field_value;
   char *carriage_return = NULL;
@@ -338,7 +343,6 @@ _Bool read_from_client(int client_fd, char **buffer) {
       puts("buffer size reached when reading from client");
     }
     
-    puts("NOT EXECUTING");
     free(*buffer);
     return 0;
   }
@@ -400,68 +404,85 @@ void send_404_response(int fd) {
   puts(status_line);
 }
 
-void respond_to_get(int client_fd,
-  request_line current_request_line)
+void handle_get_request(int client_fd,
+  request_line client_request_line,
+  header_field **headers)
 {
-  char last_character = current_request_line.target[
-    strlen(current_request_line.target) - 1];
+/*
+  // TODO get headers size
+  for (size_t i = 0;; i++) {
+    if (headers[i]->name == NULL) {
+      puts("W");
+    }
+    puts(headers[i]->name);
+  }
+*/
+  char index[] = "index.html";
 
-  char index_html[] = "/index.html";
+  char last_character = client_request_line.target[
+    strlen(client_request_line.target) - 1];
 
   if (last_character == '/') {
-    size_t le_size = sizeof(index_html);
-    current_request_line.target = malloc(le_size);
+    size_t new_size = strlen(index) +
+      strlen(client_request_line.target) + 1;
 
-    snprintf(current_request_line.target, le_size,
-      "%s", index_html);
+    char *new_target = malloc(new_size);
+    // TODO error check snprintf...
+    snprintf(new_target, new_size, "%s%s",
+      client_request_line.target, index);
+    
+    // TODO check if we don't have to free this.
+    // free(client_request_line.target);
+    client_request_line.target = new_target;
   }
 
-  size_t le_size = strlen(ROOT_PATH) +
-    strlen(current_request_line.target) + 1;
+  size_t path_size = strlen(ROOT_PATH) +
+    strlen(client_request_line.target) + 1;
 
-  char *target = malloc(le_size);
+  char *file_path = malloc(path_size);
 
-  snprintf(target, le_size, "%s%s",
-    ROOT_PATH, current_request_line.target);
+  // TODO error check snprintf
+  snprintf(file_path, path_size, "%s%s",
+    ROOT_PATH, client_request_line.target);
 
-  char status_line_headers[] =
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/html\r\n"
-    "\r\n";
-
-  puts(current_request_line.target);
-  FILE *target_file = fopen(target, "r");
+  puts(client_request_line.target);
+  FILE *target_file = fopen(file_path, "r");
 
   if (target_file == NULL) {
     send_404_response(client_fd);
     return;
   }
 
+  // TODO generate response based on request headers
+  char status_line_headers[] =
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Type: text/html\r\n"
+    "\r\n";
+
   size_t file_size = get_file_size(target_file);
-  char *message_body = malloc(file_size);
+  char *body = malloc(file_size);
 
-  fread(message_body, 1, file_size, target_file);
+  size_t body_size = fread(body, 1, file_size, target_file);
 
-  send(
-    client_fd, status_line_headers,
+  send(client_fd, status_line_headers,
     strlen(status_line_headers), 0);
 
-  send(
-    client_fd, message_body,
-    file_size, 0);
+  send(client_fd, body, body_size, 0);
 }
 void respond_to_head();
 
 int send_response(int client_fd,
-  request_line request_line)
+  request_line client_request_line, header_field **headers)
 {
-  if (strcmp(request_line.version, "HTTP/1.1") != 0) {
+  if (strcmp(client_request_line.version, "HTTP/1.1") != 0)
+  {
     puts("Only HTTP/1.1 is supported.");
     return -1;
   }
 
-  if (strcmp(request_line.method, "GET") == 0) {
-    respond_to_get(client_fd, request_line);
+  if (strcmp(client_request_line.method, "GET") == 0) {
+    handle_get_request(client_fd, client_request_line,
+      headers);
   }
 /*
   if (strcmp(request_line.method, "HEAD") == 0) {
@@ -487,7 +508,7 @@ void accept_connection(int server_fd) {
   puts("parse request success");
 
   send_response(client_fd,
-    *client_request_line);
+    *client_request_line, headers);
 
   free(start_of_buffer);
   puts("freed buffer");
