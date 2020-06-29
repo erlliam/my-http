@@ -302,21 +302,20 @@ header_field *extract_header_field(char **request) {
 _Bool extract_headers(char **request,
   headers **result)
 {
-  
-  *result = malloc(sizeof(headers));
-  (*result)->size = 3;
-
-  (*result)->values = malloc(sizeof(header_field **) *
-    (*result)->size);
-
+  // TODO FREE MEMORY ON FAILURE;
+  size_t headers_size = 3;
   size_t index = 0;
 
+  *result = malloc(sizeof(headers));
+  (*result)->values = malloc(sizeof(header_field **) *
+    headers_size);
+
   while (!is_crlf(*request)) {
-    if (index == (*result)->size) {
-      (*result)->size *= 2;
+    if (index == headers_size) {
+      headers_size *= 2;
 
       header_field **temp = realloc((*result)->values,
-        sizeof(header_field **) * (*result)->size);
+        sizeof(header_field **) * headers_size);
 
       if (temp) (*result)->values = temp;
       else {
@@ -329,7 +328,6 @@ _Bool extract_headers(char **request,
       request);
 
     if (result) {
-      // TODO use index for size, not array capacity as size
       (*result)->values[index] = extract_result;
     } else {
       index--;
@@ -338,6 +336,8 @@ _Bool extract_headers(char **request,
 
     index++;
   }
+  (*result)->size = index;
+  
 
   return 1;
 }
@@ -374,7 +374,6 @@ _Bool parse_request(char **request,
     return 0;
 
   if (!extract_headers(request, request_headers)) return 0;
-  printf("SIZE: %ld\n", (*request_headers)->size);
 
   return 1;
 }
@@ -422,17 +421,14 @@ void send_404_response(int fd) {
 
 void handle_get_request(int client_fd,
   request_line client_request_line,
-  headers *request_headers)
+  headers request_headers)
 {
-/*
-  // TODO get headers size
-  for (size_t i = 0;; i++) {
-    if (headers[i]->name == NULL) {
-      puts("W");
-    }
-    puts(headers[i]->name);
+  // TODO make things happen based on the headers we got
+  for (size_t i = 0; i < request_headers.size; i++) {
+    printf("%s: %s\n",
+      request_headers.values[i]->name,
+      request_headers.values[i]->value);
   }
-*/
   char index[] = "index.html";
 
   char last_character = client_request_line.target[
@@ -489,7 +485,7 @@ void respond_to_head();
 
 int send_response(int client_fd,
   request_line client_request_line,
-  headers *request_headers)
+  headers request_headers)
 {
   if (strcmp(client_request_line.version, "HTTP/1.1") != 0)
   {
@@ -514,7 +510,6 @@ void accept_connection(int server_fd) {
 
   char *buffer = NULL;
   request_line *client_request_line = NULL;
-  // TODO Make persistent
   headers *request_headers = NULL;
   
   if (!read_from_client(client_fd, &buffer)) return;
@@ -526,7 +521,7 @@ void accept_connection(int server_fd) {
   puts("parse request success");
 
   send_response(client_fd,
-    *client_request_line, request_headers);
+    *client_request_line, *request_headers);
 
   free(start_of_buffer);
   puts("freed buffer");
