@@ -61,11 +61,16 @@ _Bool is_whitespace(char *character) {
 }
 
 // TODO: Implement empty_line check with no overflow
-// _Bool is_empty_line(char *target) {
-//   if (is_crlf(target) && is_crlf(target + 2)) {
-//   }
-// }
+_Bool is_empty_line(char *target) {
+  size_t crlf_count = 0;
+  for (char *c = target; *c != '\0'; *c += 2) {
+    if (is_crlf(c)) {
+      crlf_count++;
+    }
+  }
 
+  return crlf_count;
+}
 // CRLFCRLF
 
 _Bool has_empty_line(char *target, size_t size) {
@@ -131,6 +136,11 @@ typedef struct header_field {
   char *name;
   char *value;
 } header_field;
+
+typedef struct headers {
+  header_field **values;
+  size_t size;
+} headers;
 
 int fill_buffer_with_request(int fd, char *buffer,
   size_t size)
@@ -290,32 +300,37 @@ header_field *extract_header_field(char **request) {
 }
 
 _Bool extract_headers(char **request,
-  header_field ***headers)
+  headers **result)
 {
-  size_t headers_size = 3;
+  
+  *result = malloc(sizeof(headers));
+  (*result)->size = 3;
 
-  *headers = malloc(sizeof(header_field **) *
-    headers_size);
+  (*result)->values = malloc(sizeof(header_field **) *
+    (*result)->size);
 
   size_t index = 0;
 
   while (!is_crlf(*request)) {
-    if (index == headers_size) {
-      headers_size *= 2;
+    if (index == (*result)->size) {
+      (*result)->size *= 2;
 
-      header_field **temp = realloc(*headers,
-        sizeof(header_field **) * headers_size);
+      header_field **temp = realloc((*result)->values,
+        sizeof(header_field **) * (*result)->size);
 
-      if (temp) *headers = temp;
+      if (temp) (*result)->values = temp;
       else {
-        free(*headers);
+        free((*result)->values);
         return 0;
       }
     }
 
-    header_field *result = extract_header_field(request);
+    header_field *extract_result = extract_header_field(
+      request);
+
     if (result) {
-      (*headers)[index] = result;
+      // TODO use index for size, not array capacity as size
+      (*result)->values[index] = extract_result;
     } else {
       index--;
       // bad with size_t;
@@ -352,13 +367,14 @@ _Bool read_from_client(int client_fd, char **buffer) {
 
 _Bool parse_request(char **request,
   request_line **client_request_line,
-  header_field ***headers)
+  headers **request_headers)
 {
 
   if (!extract_request_line(request, client_request_line))
     return 0;
 
-  if (!extract_headers(request, headers)) return 0;
+  if (!extract_headers(request, request_headers)) return 0;
+  printf("SIZE: %ld\n", (*request_headers)->size);
 
   return 1;
 }
@@ -406,7 +422,7 @@ void send_404_response(int fd) {
 
 void handle_get_request(int client_fd,
   request_line client_request_line,
-  header_field **headers)
+  headers *request_headers)
 {
 /*
   // TODO get headers size
@@ -472,7 +488,8 @@ void handle_get_request(int client_fd,
 void respond_to_head();
 
 int send_response(int client_fd,
-  request_line client_request_line, header_field **headers)
+  request_line client_request_line,
+  headers *request_headers)
 {
   if (strcmp(client_request_line.version, "HTTP/1.1") != 0)
   {
@@ -482,7 +499,7 @@ int send_response(int client_fd,
 
   if (strcmp(client_request_line.method, "GET") == 0) {
     handle_get_request(client_fd, client_request_line,
-      headers);
+      request_headers);
   }
 /*
   if (strcmp(request_line.method, "HEAD") == 0) {
@@ -497,27 +514,24 @@ void accept_connection(int server_fd) {
 
   char *buffer = NULL;
   request_line *client_request_line = NULL;
-  header_field **headers = NULL;
-
+  // TODO Make persistent
+  headers *request_headers = NULL;
+  
   if (!read_from_client(client_fd, &buffer)) return;
   puts("read from client success");
   char *start_of_buffer = buffer;
 
   if (!parse_request(&buffer, &client_request_line,
-    &headers)) return;
+    &request_headers)) return;
   puts("parse request success");
 
   send_response(client_fd,
-    *client_request_line, headers);
+    *client_request_line, request_headers);
 
   free(start_of_buffer);
   puts("freed buffer");
   free(client_request_line);
   puts("freed request line");
-
-  // children are manually alloacc
-  free(headers);
-  puts("headers pointer");
 
   close(client_fd);
 }
