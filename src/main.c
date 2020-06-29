@@ -127,7 +127,7 @@ typedef struct header_field {
   char *value;
 } header_field;
 
-_Bool fill_buffer_with_request(int fd, char *buffer,
+int fill_buffer_with_request(int fd, char *buffer,
   size_t size)
 {
   size_t total_bytes = 0;
@@ -140,44 +140,32 @@ _Bool fill_buffer_with_request(int fd, char *buffer,
     int received_bytes = recv(
       fd, start_at, bytes_available, 0);
 
-    if (received_bytes == -1) {
-      perror("Recv");
-      return 0;
-    } else if (received_bytes == 0) {
-      puts("Connection closed");
-      return 0;
-    }
+    if (received_bytes == -1) return -1;
+    else if (received_bytes == 0) return 0;
 
     total_bytes += received_bytes;
-    if (total_bytes == buffer_capacity) {
-      puts("Buffer is not big enough");
-      return 0;
-    }
-
+    if (total_bytes == buffer_capacity) return -2;
     bytes_available -= received_bytes;
     
     if (received_bytes >= 4) {
-      if (has_empty_line(start_at, received_bytes)) {
+      if (has_empty_line(start_at, received_bytes))
         break;
-      }
     } else if (total_bytes >= 4) {
       size_t offset = 4 - received_bytes;
       if (has_empty_line(start_at - offset,
-        received_bytes + offset))
-      {
-        break;
-      }
+        received_bytes + offset)) break;
     }
   }
+
   buffer[total_bytes] = '\0';
 
-  return 1;
+  return total_bytes;
 }
 
-request_line *extract_request_line(char **request)
+_Bool extract_request_line(char **request,
+  request_line **result)
 {
-  request_line *result = malloc(sizeof(
-    request_line));
+  *result = malloc(sizeof(request_line));
 
   char *first_space = NULL;
   for (char *c = *request; *c != '\0'; c++) {
@@ -189,20 +177,28 @@ request_line *extract_request_line(char **request)
     }
   }
 
-  if (!first_space) return NULL;
+  if (!first_space) {
+    free(result);
+    return 0;
+  }
   // TODO: Figure out what the target whitelist is
   // Figure out what the HTTP version whitelist is.
 
   char *second_space = strchr(first_space + 1, ' ');
-  if (!second_space) return NULL;
+  if (!second_space) {
+    free(result);
+    return 0;
+  }
 
   char *carriage_return = strchr(second_space + 1, '\r');
-  if (!carriage_return && !is_crlf(carriage_return))
+  if (!carriage_return && !is_crlf(carriage_return)) {
+    free(result);
     return 0;
+  }
 
-  result->method = *request;
-  result->target = first_space + 1;
-  result->version = second_space + 1;
+  (*result)->method = *request;
+  (*result)->target = first_space + 1;
+  (*result)->version = second_space + 1;
 
   *first_space = '\0';
   *second_space = '\0';
@@ -210,7 +206,7 @@ request_line *extract_request_line(char **request)
 
   *request = carriage_return + 2;
 
-  return result;
+  return 1;
 }
 
 void next_line(char **target) {
@@ -288,10 +284,12 @@ header_field *extract_header_field(char **request) {
   return result;
 }
 
-header_field **extract_headers(char **request) {
+_Bool extract_headers(char **request,
+  header_field ***headers)
+{
   size_t headers_size = 3;
 
-  header_field **headers = malloc(sizeof(header_field **) *
+  *headers = malloc(sizeof(header_field **) *
     headers_size);
 
   size_t index = 0;
@@ -300,19 +298,19 @@ header_field **extract_headers(char **request) {
     if (index == headers_size) {
       headers_size *= 2;
 
-      header_field **temp = realloc(headers,
+      header_field **temp = realloc(*headers,
         sizeof(header_field **) * headers_size);
 
-      if (temp) {
-        headers = temp;
-      } else {
-        puts("ERROR");
+      if (temp) *headers = temp;
+      else {
+        free(*headers);
+        return 0;
       }
     }
 
     header_field *result = extract_header_field(request);
     if (result) {
-      headers[index] = result;
+      (*headers)[index] = result;
     } else {
       index--;
       // bad with size_t;
@@ -321,45 +319,46 @@ header_field **extract_headers(char **request) {
     index++;
   }
 
-  return headers;
+  return 1;
 }
 
-_Bool parse_request(char *request_buffer,
-  request_line **client_request_line,
-  header_field ***headers)
-{
-  *client_request_line = extract_request_line(
-    &request_buffer);
+_Bool read_from_client(int client_fd, char **buffer) {
 
-  if (!(*client_request_line)) {
-    puts("Invalid request line format");
+  *buffer = malloc(BUFFER_SIZE);
+
+  int result = fill_buffer_with_request(client_fd, *buffer,
+    BUFFER_SIZE);
+
+  if (result < 1) {
+    if (result == -1) {
+      puts("recv error when reading from client");
+    } else if (result == 0) {
+      puts("connected closed when reading from client");
+    } else if (result == -2) {
+      puts("buffer size reached when reading from client");
+    }
+    
+    puts("NOT EXECUTING");
+    free(*buffer);
     return 0;
   }
 
-  *headers = extract_headers(&request_buffer);
-
   return 1;
 }
 
-int get_request(int client_fd,
-  request_line **request_line, char **buffer,
+_Bool parse_request(char **request,
+  request_line **client_request_line,
   header_field ***headers)
 {
-  *buffer = malloc(BUFFER_SIZE);
-  if (!fill_buffer_with_request(client_fd, *buffer,
-    BUFFER_SIZE)) return -1;
 
-  // TODO
-  // We don't have enough info to know if we've allocated
-  // request_line.
-  // If we return above, we will try to free unallocated
-  // memory. Big problem.
+  if (!extract_request_line(request, client_request_line))
+    return 0;
 
-  if (!parse_request(*buffer, request_line, headers)) 
-    return -1;
+  if (!extract_headers(request, headers)) return 0;
 
   return 1;
 }
+
 
 void send_404_response(int fd) {
   FILE *html = get_file_from_root("/404.html");
@@ -475,30 +474,30 @@ int send_response(int client_fd,
 void accept_connection(int server_fd) {
   int client_fd = accept(server_fd, NULL, NULL);
 
-  char *buffer;
-  request_line *current_request_line;
-  header_field **headers;
+  char *buffer = NULL;
+  request_line *client_request_line = NULL;
+  header_field **headers = NULL;
 
+  if (!read_from_client(client_fd, &buffer)) return;
+  puts("read from client success");
+  char *start_of_buffer = buffer;
 
-  int request_result = get_request(client_fd,
-    &current_request_line, &buffer, &headers);
-
-  if (request_result == -1) {
-    free(buffer);
-    free(current_request_line);
-    close(client_fd);
-    return;
-  }
-
-  // Error check current_request_line;
+  if (!parse_request(&buffer, &client_request_line,
+    &headers)) return;
+  puts("parse request success");
 
   send_response(client_fd,
-    *current_request_line);
+    *client_request_line);
 
-  // puts(headers[0]->name);
+  free(start_of_buffer);
+  puts("freed buffer");
+  free(client_request_line);
+  puts("freed request line");
 
-  free(buffer);
-  free(current_request_line);
+  // children are manually alloacc
+  free(headers);
+  puts("headers pointer");
+
   close(client_fd);
 }
 
