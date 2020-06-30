@@ -297,12 +297,12 @@ header_field *extract_header_field(char **request) {
   *request = carriage_return + 2;
 
   return result;
+
 }
 
 _Bool extract_headers(char **request,
   headers **result)
 {
-  // TODO FREE MEMORY ON FAILURE;
   size_t headers_size = 3;
   size_t index = 0;
 
@@ -320,24 +320,26 @@ _Bool extract_headers(char **request,
       if (temp) (*result)->values = temp;
       else {
         free((*result)->values);
+        free(*result);
         return 0;
       }
     }
 
-    header_field *extract_result = extract_header_field(
-      request);
+    for (;;) {
+      header_field *extract_result = extract_header_field(
+        request);
 
-    if (result) {
-      (*result)->values[index] = extract_result;
-    } else {
-      index--;
-      // bad with size_t;
+      if (extract_result) {
+        (*result)->values[index] = extract_result;
+        break;
+      }
     }
 
+        puts("we out");
     index++;
   }
+
   (*result)->size = index;
-  
 
   return 1;
 }
@@ -424,11 +426,6 @@ void handle_get_request(int client_fd,
   headers request_headers)
 {
   // TODO make things happen based on the headers we got
-  for (size_t i = 0; i < request_headers.size; i++) {
-    printf("%s: %s\n",
-      request_headers.values[i]->name,
-      request_headers.values[i]->value);
-  }
   char index[] = "index.html";
 
   char last_character = client_request_line.target[
@@ -458,6 +455,15 @@ void handle_get_request(int client_fd,
     ROOT_PATH, client_request_line.target);
 
   puts(client_request_line.target);
+
+  printf("%30s\n", "START OF HEADERS");
+  for (size_t i = 0; i < request_headers.size; i++) {
+    printf("%s: %s\n",
+      request_headers.values[i]->name,
+      request_headers.values[i]->value);
+  }
+  printf("%30s\n", "END OF HEADERS");
+
   FILE *target_file = fopen(file_path, "r");
 
   if (target_file == NULL) {
@@ -505,6 +511,15 @@ int send_response(int client_fd,
   return 0;
 }
 
+void free_headers(headers **target) {
+  for (size_t i = 0; i < (*target)->size; i++) {
+    free((*target)->values[i]);
+  }
+
+  free((*target)->values);
+  free(*target);
+}
+
 void accept_connection(int server_fd) {
   int client_fd = accept(server_fd, NULL, NULL);
 
@@ -527,6 +542,8 @@ void accept_connection(int server_fd) {
   puts("freed buffer");
   free(client_request_line);
   puts("freed request line");
+  free_headers(&request_headers);
+  puts("freed headers?");
 
   close(client_fd);
 }
