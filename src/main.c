@@ -13,6 +13,20 @@
 
 #define BUFFER_SIZE 8192
 
+struct header_field {
+  char *name;
+  char *value;
+};
+
+struct request {
+  char *method;
+  char *target;
+  char *version;
+  size_t header_count;
+  struct header_field headers[];
+};
+
+
 _Bool is_crlf(char *target) {
   if (*target == '\r') {
     char *next = target + 1;
@@ -126,22 +140,6 @@ size_t get_file_size(FILE *file) {
   return 0;
 }
 
-typedef struct request_line {
-  char *method;
-  char *target;
-  char *version;
-} request_line;
-
-typedef struct header_field {
-  char *name;
-  char *value;
-} header_field;
-
-typedef struct headers {
-  header_field **values;
-  size_t size;
-} headers;
-
 int fill_buffer_with_request(int fd, char *buffer,
   size_t size)
 {
@@ -162,6 +160,8 @@ int fill_buffer_with_request(int fd, char *buffer,
     if (total_bytes == buffer_capacity) return -2;
     bytes_available -= received_bytes;
     
+    // TODO Think of way to make use of this initial
+    // scanning of the request.
     if (received_bytes >= 4) {
       if (has_empty_line(start_at, received_bytes))
         break;
@@ -177,13 +177,13 @@ int fill_buffer_with_request(int fd, char *buffer,
   return total_bytes;
 }
 
-_Bool extract_request_line(char **request,
-  request_line **result)
+_Bool extract_request_line(char **buffer,
+  struct request *request)
 {
-  *result = malloc(sizeof(request_line));
+  // *result = malloc(sizeof(request_line));
 
   char *first_space = NULL;
-  for (char *c = *request; *c != '\0'; c++) {
+  for (char *c = *buffer; *c != '\0'; c++) {
     if (!is_tchar(c)) {
       if (*c == ' ') {
         first_space = c;
@@ -193,7 +193,7 @@ _Bool extract_request_line(char **request,
   }
 
   if (!first_space) {
-    free(result);
+    // free(result);
     return 0;
   }
   // TODO: Figure out what the target whitelist is
@@ -201,25 +201,28 @@ _Bool extract_request_line(char **request,
 
   char *second_space = strchr(first_space + 1, ' ');
   if (!second_space) {
-    free(result);
+    // free(result);
     return 0;
   }
 
   char *carriage_return = strchr(second_space + 1, '\r');
   if (!carriage_return && !is_crlf(carriage_return)) {
-    free(result);
+    // free(result);
     return 0;
   }
 
-  (*result)->method = *request;
-  (*result)->target = first_space + 1;
-  (*result)->version = second_space + 1;
+  request->method = *buffer;
+  request->target = first_space + 1;
+  request->version = second_space + 1;
+  // (*result)->method = *request;
+  // (*result)->target = first_space + 1;
+  // (*result)->version = second_space + 1;
 
   *first_space = '\0';
   *second_space = '\0';
   *carriage_return ='\0';
 
-  *request = carriage_return + 2;
+  *buffer = carriage_return + 2;
 
   return 1;
 }
@@ -233,15 +236,15 @@ void next_line(char **target) {
 
 // TODO clean up crappy code
 
-header_field *extract_header_field(char **request) {
+struct header_field *extract_header_field(char **buffer) {
   char *colon = NULL;
-  for (char *c = *request; *c != '\0'; c++) {
+  for (char *c = *buffer; *c != '\0'; c++) {
     if (!is_tchar(c)) {
       if (*c == ':') {
         colon = c;
         break;
       } else if (is_crlf(c)) {
-        next_line(request);
+        next_line(buffer);
         return NULL;
       }
 
@@ -259,7 +262,7 @@ header_field *extract_header_field(char **request) {
     } else if (is_whitespace(c)) {
       // Skip whitespace.
     } else if (is_crlf(c)) {
-      next_line(request);
+      next_line(buffer);
       return NULL;
     }
   }
@@ -290,62 +293,62 @@ header_field *extract_header_field(char **request) {
   *colon = '\0';
   *(last_vchar + 1) = '\0';
 
-  header_field *result = malloc(sizeof(header_field));
-  result->name = *request;
+  struct header_field *result = malloc(sizeof(
+    struct header_field));
+
+  result->name = *buffer;
   result->value = field_value;
   
-  *request = carriage_return + 2;
+  *buffer = carriage_return + 2;
 
   return result;
 
 }
 
-_Bool extract_headers(char **request,
-  headers **result)
-{
-  size_t headers_size = 3;
-  size_t index = 0;
-
-  *result = malloc(sizeof(headers));
-  (*result)->values = malloc(sizeof(header_field **) *
-    headers_size);
-
-  while (!is_crlf(*request)) {
-    if (index == headers_size) {
-      headers_size *= 2;
-
-      header_field **temp = realloc((*result)->values,
-        sizeof(header_field **) * headers_size);
-
-      if (temp) (*result)->values = temp;
-      else {
-        free((*result)->values);
-        free(*result);
-        return 0;
-      }
-    }
-
-    for (;;) {
-      header_field *extract_result = extract_header_field(
-        request);
-
-      if (extract_result) {
-        (*result)->values[index] = extract_result;
-        break;
-      }
-    }
-
-        puts("we out");
-    index++;
-  }
-
-  (*result)->size = index;
-
-  return 1;
-}
+// _Bool extract_headers(char **buffer,
+//   struct request *request)
+// {
+//   size_t headers_size = 3;
+//   size_t index = 0;
+// 
+//   *result = malloc(sizeof(headers));
+//   (*result)->values = malloc(sizeof(header_field **) *
+//     headers_size);
+// 
+//   while (!is_crlf(*buffer)) {
+//     if (index == headers_size) {
+//       headers_size *= 2;
+// 
+//       header_field **temp = realloc((*result)->values,
+//         sizeof(header_field **) * headers_size);
+// 
+//       if (temp) (*result)->values = temp;
+//       else {
+//         free((*result)->values);
+//         free(*result);
+//         return 0;
+//       }
+//     }
+// 
+//     for (;;) {
+//       struct header_field *extract_result =
+//         extract_header_field( buffer);
+// 
+//       if (extract_result) {
+//         (*result)->values[index] = extract_result;
+//         break;
+//       }
+//     }
+// 
+//     index++;
+//   }
+// 
+//   (*result)->size = index;
+// 
+//   return 1;
+// }
 
 _Bool read_from_client(int client_fd, char **buffer) {
-
   *buffer = malloc(BUFFER_SIZE);
 
   int result = fill_buffer_with_request(client_fd, *buffer,
@@ -367,15 +370,14 @@ _Bool read_from_client(int client_fd, char **buffer) {
   return 1;
 }
 
-_Bool parse_request(char **request,
-  request_line **client_request_line,
-  headers **request_headers)
+_Bool parse_buffer(char **buffer, struct request *request)
 {
+  extract_request_line(buffer, request);
+  // extract_headers(buffer, request);
+  // if (!extract_request_line(request, client_request_line))
+  //   return 0;
 
-  if (!extract_request_line(request, client_request_line))
-    return 0;
-
-  if (!extract_headers(request, request_headers)) return 0;
+  // if (!extract_headers(request, request_headers)) return 0;
 
   return 1;
 }
@@ -421,129 +423,120 @@ void send_404_response(int fd) {
   puts(status_line);
 }
 
-void handle_get_request(int client_fd,
-  request_line client_request_line,
-  headers request_headers)
-{
-  // TODO make things happen based on the headers we got
-  char index[] = "index.html";
-
-  char last_character = client_request_line.target[
-    strlen(client_request_line.target) - 1];
-
-  if (last_character == '/') {
-    size_t new_size = strlen(index) +
-      strlen(client_request_line.target) + 1;
-
-    char *new_target = malloc(new_size);
-    // TODO error check snprintf...
-    snprintf(new_target, new_size, "%s%s",
-      client_request_line.target, index);
-    
-    // TODO check if we don't have to free this.
-    // free(client_request_line.target);
-    client_request_line.target = new_target;
-  }
-
-  size_t path_size = strlen(ROOT_PATH) +
-    strlen(client_request_line.target) + 1;
-
-  char *file_path = malloc(path_size);
-
-  // TODO error check snprintf
-  snprintf(file_path, path_size, "%s%s",
-    ROOT_PATH, client_request_line.target);
-
-  puts(client_request_line.target);
-
-  printf("%30s\n", "START OF HEADERS");
-  for (size_t i = 0; i < request_headers.size; i++) {
-    printf("%s: %s\n",
-      request_headers.values[i]->name,
-      request_headers.values[i]->value);
-  }
-  printf("%30s\n", "END OF HEADERS");
-
-  FILE *target_file = fopen(file_path, "r");
-
-  if (target_file == NULL) {
-    send_404_response(client_fd);
-    return;
-  }
-
-  // TODO generate response based on request headers
-  char status_line_headers[] =
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/html\r\n"
-    "\r\n";
-
-  size_t file_size = get_file_size(target_file);
-  char *body = malloc(file_size);
-
-  size_t body_size = fread(body, 1, file_size, target_file);
-
-  send(client_fd, status_line_headers,
-    strlen(status_line_headers), 0);
-
-  send(client_fd, body, body_size, 0);
-}
+// void handle_get_request(int client_fd,
+//   struct request *request)
+// {
+//   // TODO make things happen based on the headers we got
+//   char index[] = "index.html";
+// 
+//   char last_character = client_request_line.target[
+//     strlen(client_request_line.target) - 1];
+// 
+//   if (last_character == '/') {
+//     size_t new_size = strlen(index) +
+//       strlen(client_request_line.target) + 1;
+// 
+//     char *new_target = malloc(new_size);
+//     // TODO error check snprintf...
+//     snprintf(new_target, new_size, "%s%s",
+//       client_request_line.target, index);
+//     
+//     // TODO check if we don't have to free this.
+//     // free(client_request_line.target);
+//     client_request_line.target = new_target;
+//   }
+// 
+//   size_t path_size = strlen(ROOT_PATH) +
+//     strlen(client_request_line.target) + 1;
+// 
+//   char *file_path = malloc(path_size);
+// 
+//   // TODO error check snprintf
+//   snprintf(file_path, path_size, "%s%s",
+//     ROOT_PATH, client_request_line.target);
+// 
+//   puts(client_request_line.target);
+// 
+//   printf("%30s\n", "START OF HEADERS");
+//   for (size_t i = 0; i < request_headers.size; i++) {
+//     printf("%s: %s\n",
+//       request_headers.values[i]->name,
+//       request_headers.values[i]->value);
+//   }
+//   printf("%30s\n", "END OF HEADERS");
+// 
+//   FILE *target_file = fopen(file_path, "r");
+// 
+//   if (target_file == NULL) {
+//     send_404_response(client_fd);
+//     return;
+//   }
+// 
+//   // TODO generate response based on request headers
+//   char status_line_headers[] =
+//     "HTTP/1.1 200 OK\r\n"
+//     "Content-Type: text/html\r\n"
+//     "\r\n";
+// 
+//   size_t file_size = get_file_size(target_file);
+//   char *body = malloc(file_size);
+// 
+//   size_t body_size = fread(body, 1, file_size, target_file);
+// 
+//   send(client_fd, status_line_headers,
+//     strlen(status_line_headers), 0);
+// 
+//   send(client_fd, body, body_size, 0);
+// }
 void respond_to_head();
 
-int send_response(int client_fd,
-  request_line client_request_line,
-  headers request_headers)
-{
-  if (strcmp(client_request_line.version, "HTTP/1.1") != 0)
-  {
-    puts("Only HTTP/1.1 is supported.");
-    return -1;
-  }
+// int send_response(int client_fd,
+//   request_line client_request_line,
+//   headers request_headers)
+// {
+//   if (strcmp(client_request_line.version, "HTTP/1.1") != 0)
+//   {
+//     puts("Only HTTP/1.1 is supported.");
+//     return -1;
+//   }
+// 
+//   if (strcmp(client_request_line.method, "GET") == 0) {
+//     handle_get_request(client_fd, client_request_line,
+//       request_headers);
+//   }
+// /*
+//   if (strcmp(request_line.method, "HEAD") == 0) {
+//     respond_to_head();
+//   }
+// */
+//   return 0;
+// }
 
-  if (strcmp(client_request_line.method, "GET") == 0) {
-    handle_get_request(client_fd, client_request_line,
-      request_headers);
-  }
-/*
-  if (strcmp(request_line.method, "HEAD") == 0) {
-    respond_to_head();
-  }
-*/
-  return 0;
-}
-
-void free_headers(headers **target) {
-  for (size_t i = 0; i < (*target)->size; i++) {
-    free((*target)->values[i]);
-  }
-
-  free((*target)->values);
-  free(*target);
-}
+// void free_headers(headers **target) {
+//   for (size_t i = 0; i < (*target)->size; i++) {
+//     free((*target)->values[i]);
+//   }
+// 
+//   free((*target)->values);
+//   free(*target);
+// }
 
 void accept_connection(int server_fd) {
   int client_fd = accept(server_fd, NULL, NULL);
 
   char *buffer = NULL;
-  request_line *client_request_line = NULL;
-  headers *request_headers = NULL;
-  
   if (!read_from_client(client_fd, &buffer)) return;
   puts("read from client success");
-  char *start_of_buffer = buffer;
+  char *buffer_start = buffer;
 
-  if (!parse_request(&buffer, &client_request_line,
-    &request_headers)) return;
-  puts("parse request success");
+  struct request request;
+  
+  parse_buffer(&buffer, &request);
+  puts("parse buffer success");
+  puts(request->method);
 
-  send_response(client_fd,
-    *client_request_line, *request_headers);
-
-  free(start_of_buffer);
+  free(buffer_start);
   puts("freed buffer");
-  free(client_request_line);
-  puts("freed request line");
-  free_headers(&request_headers);
-  puts("freed headers?");
 
   close(client_fd);
 }
