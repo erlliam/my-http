@@ -1,0 +1,12 @@
+GOAL:
+  [_] Handle HEAD requests
+  [_] Handle GET requests
+
+TODO:
+  [_] Plan the implementation
+  [_] Clean up previous code
+  [_] Respond to all GET requests
+
+Suggestions:
+  readv
+  sendfile
