@@ -10,3 +10,19 @@ TODO:
 Suggestions:
   readv
   sendfile
+
+DRAFT
+  Create server
+    socket()
+    bind()
+    listen()
+
+  Listen for requests
+    accept()
+    recv()
+
+  Respond to requests
+    send()
+
+  Problem
+    accept() and recv() both block
