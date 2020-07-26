@@ -11,10 +11,14 @@
 
 #include "server.h"
 
+// XXX
+void test_code();
 static int attempt_to_listen(struct addrinfo *addrinfo);
 
 int create_server(const char *node, const char *service)
 {
+  // XXX
+  test_code();
   struct addrinfo hints = {
     .ai_family = AF_UNSPEC,
     .ai_flags = AI_PASSIVE,
@@ -101,18 +105,69 @@ struct sockets create_sockets() {
   };
 }
 
-void add_to_sockets(struct sockets sockets, int fd)
+void add_to_sockets(struct sockets *sockets, int fd)
 {
-  if (sockets.length == sockets.capacity) {
-    sockets.capacity *= 2;
-    sockets.fds = realloc(sockets.fds,
-      sizeof(struct pollfd) * sockets.capacity);
+  if (sockets->length == sockets->capacity) {
+    sockets->capacity *= 2;
+    sockets->fds = realloc(sockets->fds,
+      sizeof(struct pollfd) * sockets->capacity);
   }
 
-  sockets.fds[sockets.length].fd = fd;
-  sockets.fds[sockets.length].events = POLLIN;
+  puts("Executed");
+  sockets->fds[sockets->length].fd = fd;
+  sockets->fds[sockets->length].events = POLLIN;
 
-  sockets.length++;
+  sockets->length++;
+}
+
+void del_from_sockets(struct sockets *sockets, int index)
+{
+  sockets->fds[index] = sockets->fds[sockets->length - 1];
+
+  sockets->length--;
+}
+
+void print_sockets(struct sockets sockets)
+{
+  puts("fds:");
+
+  if (sockets.length == 0) {
+    puts("\tfds is empty.");
+  } else {
+    for (size_t i = 0; i < sockets.length; i++) {
+      printf(
+        "\tfd:          %d\n",
+        sockets.fds[i].fd
+      );
+    }
+  }
+  printf(
+    "sockets:\n"
+    "\tcapacity:   %ld\n"
+    "\tlength:     %ld\n",
+    sockets.capacity,
+    sockets.length
+  );
+}
+
+// XXX
+void test_code()
+{
+  struct sockets sockets = create_sockets();
+  print_sockets(sockets);
+  
+  add_to_sockets(&sockets, 5);
+  print_sockets(sockets);
+  del_from_sockets(&sockets, 0);
+  print_sockets(sockets);
+  add_to_sockets(&sockets, 100);
+  add_to_sockets(&sockets, 34);
+  add_to_sockets(&sockets, 12);
+  // del_from_sockets(&sockets, 0);
+  del_from_sockets(&sockets, 2);
+  print_sockets(sockets);
+
+  free(sockets.fds);
 }
 
 void accept_connections(const int server_fd)
