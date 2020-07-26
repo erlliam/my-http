@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# -g0 (no debugging), -O0 (no optimizations), no -fsanitize
+# compilation speed optimization
+
+main_dir="$(dirname "$0")"
+inc_dir="$main_dir/include"
+src_dir="$main_dir/src"
+bin_dir="$main_dir/bin"
+
+file_name="my_http"
+
+gcc                                     \
+"$src_dir/main.c"                       \
+"$src_dir/server.c"                     \
+-flto                                   \
+-Wall -Wextra -pedantic                 \
+-g -fsanitize=address,undefined         \
+-I"$inc_dir"                            \
+-o "$bin_dir/$file_name"                \
+&& "$bin_dir/$file_name"
