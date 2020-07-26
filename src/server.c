@@ -17,8 +17,6 @@ static int attempt_to_listen(struct addrinfo *addrinfo);
 
 int create_server(const char *node, const char *service)
 {
-  // XXX
-  test_code();
   struct addrinfo hints = {
     .ai_family = AF_UNSPEC,
     .ai_flags = AI_PASSIVE,
@@ -92,6 +90,7 @@ static int attempt_to_listen(
 
 struct sockets {
   struct pollfd *fds;
+  // fds is a misleading name!
   size_t capacity;
   size_t length;
 };
@@ -113,7 +112,6 @@ void add_to_sockets(struct sockets *sockets, int fd)
       sizeof(struct pollfd) * sockets->capacity);
   }
 
-  puts("Executed");
   sockets->fds[sockets->length].fd = fd;
   sockets->fds[sockets->length].events = POLLIN;
 
@@ -172,41 +170,51 @@ void test_code()
 
 void accept_connections(const int server_fd)
 {
-  int fd_count = 0;
-  int fd_size = 5;
-  struct pollfd *pfds = malloc(sizeof *pfds * fd_size);
-
-  pfds[0].fd = server_fd;
-  pfds[0].events = POLLIN;
-
-  fd_count++;
+  struct sockets sockets = create_sockets();
+  add_to_sockets(&sockets, server_fd);
 
   for (;;) {
-    int poll_count = poll(pfds, fd_count, -1);
+    int poll_count = poll(sockets.fds, sockets.length, -1);
     if (poll_count == -1) {
       perror("poll error");
       exit(EXIT_FAILURE);
       // Probably shouldn't exit
     }
 
-    for (int i = 0; i < fd_count; i++) {
-      if (pfds[i].revents == 1) {
-        if (pfds[i].fd == server_fd) {
+    for (struct pollfd *pollfd = sockets.fds;
+         pollfd < sockets.fds + sockets.length;
+         pollfd++) {
+      if (pollfd->revents == POLLIN) {
+        if (pollfd->fd == server_fd) {
           int client_fd = accept(server_fd, NULL, NULL);
-          puts("\tclient connected");
-
           if (client_fd == -1) {
             perror("accept error");
           } else {
-            // Add to pollfd array
+            puts("\tclient connected.");
+            add_to_sockets(&sockets, client_fd);
+          }
+        } else {
+          char buffer[100];
+          int nbytes = recv(pollfd->fd,
+            buffer, sizeof(buffer), 0);
+
+          if (nbytes <= 0) {
+            if (nbytes == 0) {
+              puts("Hoe hung up!");
+            } else {
+              perror("recv");
+            }
+
+            close(pollfd->fd);
+            del_from_sockets(&sockets,
+              (pollfd - sockets.fds));
+
+          } else {
+            buffer[99] = '\0';
+            puts(buffer);
           }
         }
       }
     }
-    // struct sockaddr client_addr;
-    // socklen_t client_addr_size = sizeof(client_addr);
-    // accept(server_fd, &client_addr, &client_addr_size);
   }
-
-  free(pfds);
 }

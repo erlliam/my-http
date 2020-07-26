@@ -16,5 +16,8 @@ int main(void)
     "\thttp://127.0.0.1:5000\n"
   );
 
+  puts("accepting connections:");
+  accept_connections(server_fd);
+
   return EXIT_SUCCESS;
 }
