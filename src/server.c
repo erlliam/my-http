@@ -92,40 +92,6 @@ struct sockets {
   size_t length;
 };
 
-static void print_capacity_length(struct sockets sockets)
-{
-  printf(
-    "sockets:\n"
-    "\tcapacity:      %ld\n"
-    "\tlength:        %ld\n",
-    sockets.capacity,
-    sockets.length
-  );
-}
-
-static void print_sockets(struct sockets sockets)
-{
-  puts("pfds:");
-
-  if (sockets.length == 0) {
-    puts("\tpfds is empty.");
-  } else {
-    for (size_t i = 0; i < sockets.length; i++) {
-      printf(
-        "\tfd:          %d\n",
-        sockets.pfds[i].fd
-      );
-    }
-  }
-  printf(
-    "sockets:\n"
-    "\tcapacity:   %ld\n"
-    "\tlength:     %ld\n",
-    sockets.capacity,
-    sockets.length
-  );
-}
-
 static struct sockets create_sockets() {
   size_t capacity = 5;
   return (struct sockets) {
