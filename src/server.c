@@ -86,6 +86,7 @@ static int attempt_to_listen(
     return -1;
 }
 
+// XXX update struct to hold ip and port information
 struct sockets {
   struct pollfd *pfds;
   size_t capacity;
@@ -105,9 +106,16 @@ static void add_to_sockets(struct sockets *sockets, int fd)
 {
   if (sockets->length == sockets->capacity) {
     sockets->capacity *= 2;
-    // XXX error check realloc
-    sockets->pfds = realloc(sockets->pfds,
+
+    struct pollfd *temp = realloc(sockets->pfds,
       sizeof(struct pollfd) * sockets->capacity);
+
+    if (temp) {
+      sockets->pfds = temp;
+    } else {
+      // XXX what to do, realloc fails
+      puts("No clue what to do.");
+    }
   }
 
   sockets->pfds[sockets->length].fd = fd;
@@ -124,9 +132,9 @@ static void del_from_sockets(struct sockets *sockets,
   sockets->length--;
 }
 
-static void accept_client(struct sockets sockets,
+static void accept_client(struct sockets *sockets,
   size_t index);
-static void recv_client(struct sockets sockets,
+static void recv_client(struct sockets *sockets,
   size_t index);
 
 void accept_connections(const int server_fd)
@@ -139,43 +147,62 @@ void accept_connections(const int server_fd)
     if (poll_count == -1) {
       perror("poll error");
       exit(EXIT_FAILURE);
-      // Probably shouldn't exit
+      // XXX Probably shouldn't exit
     }
 
     for (size_t i = 0; i < sockets.length; i++) {
-      // XXX
-      // Not sure how revents works.
+      // XXX Not sure how revents works.
       // Something involving bit masks?
       if (sockets.pfds[i].revents == POLLIN) {
         if (sockets.pfds[i].fd == server_fd) {
-          accept_client(sockets, i);
+          accept_client(&sockets, i);
         } else {
-          recv_client(sockets, i);
+          recv_client(&sockets, i);
         }
       } // revents == POLLIN
     } // loop through sockets.pfds[]
   } // infinite loop
 }
 
-static void accept_client(struct sockets sockets,
+static void *get_in_addr(struct sockaddr *sa);
+
+static void accept_client(struct sockets *sockets,
   size_t index)
 {
-  int fd = sockets.pfds[index].fd;
+  int fd = sockets->pfds[index].fd;
 
-  // XXX store client information
-  int client_fd = accept(fd, NULL, NULL);
+  struct sockaddr_storage addr;
+  socklen_t addr_len = sizeof(addr);
+  int client_fd = accept(fd, (struct sockaddr *)&addr,
+    &addr_len);
+
   if (client_fd == -1) {
     perror("accept error");
-  } else {
-    add_to_sockets(&sockets, client_fd);
-    puts("\tclient connected.");
+    return;
   }
+  add_to_sockets(sockets, client_fd);
+
+  char client_ip[INET6_ADDRSTRLEN];
+  inet_ntop(addr.ss_family,
+    get_in_addr((struct sockaddr *)&addr),
+    client_ip, sizeof(client_ip));
+    // or?
+    // client_ip, INET6_ADDRSTRLEN);
+  // sizeof(client_ip) is 46
+  // INET6_ADDRSTRLEN is 46
+
+  printf(
+    "\tclient connected:\n"
+    "\t\tip:    %s\n"
+    "\t\tport:  %d\n\n", 
+    client_ip,
+    ((struct sockaddr_in *)&addr)->sin_port);
 }
 
-static void recv_client(struct sockets sockets,
+static void recv_client(struct sockets *sockets,
   size_t index)
 {
-  int fd = sockets.pfds[index].fd;
+  int fd = sockets->pfds[index].fd;
   char buffer[8192];
 
   int rb = recv(fd, buffer, sizeof(buffer), 0);
@@ -187,9 +214,19 @@ static void recv_client(struct sockets sockets,
       perror("recv error");
     }
     close(fd);
-    del_from_sockets(&sockets, index);
+    del_from_sockets(sockets, index);
   }
 
   buffer[rb] = '\0';
   fputs(buffer, stdout);
+}
+
+// function from: https://beej.us/guide/bgnet/examples/pollserver.c
+static void *get_in_addr(struct sockaddr *sa)
+{
+  if (sa->sa_family == AF_INET) {
+    return &(((struct sockaddr_in *)sa)->sin_addr);
+  }
+
+  return &(((struct sockaddr_in6 *)sa)->sin6_addr);
 }
