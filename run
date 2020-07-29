@@ -13,6 +13,7 @@ file_name="my_http"
 gcc                                     \
 "$src_dir/main.c"                       \
 "$src_dir/server.c"                     \
+"$src_dir/syntax.c"                     \
 -flto                                   \
 -Wall -Wextra -pedantic                 \
 -g -fsanitize=address,undefined         \

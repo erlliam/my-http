@@ -2,28 +2,17 @@
 #include <stdio.h>
 
 #include "server.h"
+#include "syntax.h"
 
 void test(void) {
-  struct the_test {
-    char the_string[3];
-  };
-
-  struct the_test test;
-
-  puts(test.the_string);
-
-  snprintf(test.the_string, 10, "%s", "he");
-  printf("%d\n", EXIT_FAILURE);
-  printf("%d\n", EXIT_SUCCESS);
-
-  puts(test.the_string);
+  test_cases();
 }
 
-int main(void)
+void real_main(void)
 {
   int server_fd = create_server(NULL, "5000");
   if (server_fd == -1) {
-    return EXIT_FAILURE;
+    return;
   }
 
   printf(
@@ -34,6 +23,11 @@ int main(void)
 
   puts("accepting connections:");
   accept_connections(server_fd);
+}
 
+int main(void)
+{
+  test();
   return EXIT_SUCCESS;
 }
+

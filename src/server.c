@@ -11,7 +11,6 @@
 
 #include "server.h"
 
-// XXX update struct to hold ip and port information
 struct sockets {
   struct pollfd *pfds;
   struct address *address;
@@ -153,6 +152,7 @@ static void add_to_sockets(struct sockets *sockets, int fd,
 static void del_from_sockets(struct sockets *sockets,
   int index)
 {
+  // XXX unstore ip and port?
   sockets->pfds[index].revents = 0;
   sockets->pfds[index] = sockets->pfds[sockets->length - 1];
 
