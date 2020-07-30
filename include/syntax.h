@@ -4,5 +4,6 @@
 #include <stdbool.h>
 
 bool parse_method(char **string);
+bool parse_http_version(char **string);
 
 #endif

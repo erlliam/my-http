@@ -12,7 +12,7 @@ bool is_sp(char c)
 
 bool is_crlf(char cr, char lf)
 {
-  return (cr == '\r' && lf == '\n');
+  return (cr == 0xD && lf == 0xA);
 }
 
 bool is_vchar(char c)
@@ -51,21 +51,32 @@ bool is_http_version(const char *s, char major, char minor)
   );
 }
 
-bool parse_method(char **string)
+bool parse_token(char **string)
 {
-  char *c = *string;
+  // min: 1 tchar, max: inf tchar
 
+  char *c = *string;
   if (!is_tchar(*c)) return false;
+  c++;
 
   for (;;) {
-    if (is_sp(*c)) break;
-    if (!is_tchar(*c)) return false;
-
+    if (!is_tchar(*c)) break;
     c++;
   }
 
-  *c = '\0';
-  *string = c + 1;
+  *string = c;
+
+  return true;
+}
+
+bool parse_method(char **string)
+{
+  if (!parse_token(string)) return false;
+
+  // XXX maybe parse_sp function?
+  if (!is_sp(**string)) return false;
+  **string = '\0';
+  *string += 1;
 
   return true;
 }
@@ -84,12 +95,10 @@ bool parse_http_version(char **string)
 
   if (s[0] == u'H' && s[1] == u'T'   && s[2] == u'T'  &&
       s[3] == u'P' && s[4] == u'/'   && isdigit(s[5]) &&
-      s[6] == u'.' && isdigit(s[7])  &&
-      is_crlf(s[8], s[9])) {
-
-    puts("if statement passed");
-    s[8] = '\0';
-    *string = s + 10;
+      s[6] == u'.' && isdigit(s[7])) {
+  //   puts("if statement passed");
+  //   s[8] = '\0';
+  //   *string = s + 10;
     return true;
   }
   return false;

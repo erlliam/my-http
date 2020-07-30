@@ -5,52 +5,66 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "test_syntax.h"
 #include "syntax.h"
 
-void test_parse_method();
+void test_parse_method(void);
+void test_parse_http_version(void);
 
-void run_test_syntax()
+void run_test_syntax(void)
 {
   // test_is_checks();
   test_parse_method();
   // test_parse_request_target();
-  // test_parse_http_version();
+  test_parse_http_version();
   // test_parse_request_line();
 }
 
-void test_parse_method()
+void test_parse_method(void)
 {
   {
-    char *request_line = malloc(256);
-    snprintf(request_line, 256, "%s",
-        "GET / HTTP/1.1");
+    char string[] = "GET / HTTP/1.1";
 
-    char *method = request_line;
+    char *method = string;
+    char *p_string = string;
 
-    assert(parse_method(&request_line));
-    assert(request_line == method + 4);
-    assert(strcmp("GET", method) == 0);
+    assert(parse_method(&p_string));
     assert(*(method + 3) == '\0');
-    // assert(*(method + 3) == '\0');
-
-    free(method);
+    assert(strcmp("GET", method) == 0);
+    assert(p_string == method + 4);
   }
   {
-    char *request_line = malloc(256);
-    snprintf(request_line, 256, "%s",
-        "G(T/ / HTTP/1.1");
-    // "(),/:;<=>?@[\]{}
-
-    char *method = request_line;
-
-    assert(!parse_method(&request_line));
-
-    free(method);
+    char string[] = " GET / HTTP/1.1";
+    char *p_string = string;
+    assert(!parse_method(&p_string));
+  }
+  {
+    char string[] = ";ET / HTTP/1.1";
+    char *p_string = string;
+    assert(!parse_method(&p_string));
   }
 }
 
+void test_parse_http_version(void)
+{
+  {
+    char string[] = "HTTP/1.1";
+    char *p_string = string;
+    assert(parse_http_version(&p_string));
+  }
+  {
+    char string[] = "hTTP/1.1";
+    char *p_string = string;
+    assert(!parse_http_version(&p_string));
+  }
+  {
+    char string[] = "HTTP/a.1";
+    char *p_string = string;
+    assert(!parse_http_version(&p_string));
+  }
 
-// 
+}
+
 // void test_is_checks()
 // {
 //   assert(is_sp(' ') == true);
