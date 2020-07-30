@@ -2,6 +2,7 @@
 #define MY_HTTP_SYNTAX_H
 
 #include <stdbool.h>
-bool parse_request_line(const char **string);
+
+bool parse_method(char **string);
 
 #endif
