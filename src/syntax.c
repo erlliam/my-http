@@ -1,12 +1,24 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <ctype.h>
-#include <assert.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
-bool is_sp(char c) { return (c == 0x20); }
-bool is_vchar(char c) { return (c >= 0x21 && c <= 0x7E); }
+bool is_sp(char c)
+{
+  return (c == 0x20);
+}
 
-// "(),/:;<=>?@[\]{}
+bool is_crlf(char cr, char lf)
+{
+  return (cr == '\r' && lf == '\n');
+}
+
+bool is_vchar(char c)
+{
+  return (c >= 0x21 && c <= 0x7E);
+}
 
 char delimiters[] = {
   0x22, 0x28, 0x29, 0x2C, 0x2F, 0x3A, 0x3B, 0x3C, 0x3D,
@@ -15,6 +27,7 @@ char delimiters[] = {
 
 bool is_delimiter(char c)
 {
+  // "(),/:;<=>?@[\]{}
   for (size_t i = 0; i < sizeof(delimiters); i++) {
     if (c == delimiters[i]) {
       return true;
@@ -28,10 +41,9 @@ bool is_tchar(char c) {
   return (is_vchar(c) && !is_delimiter(c));
 }
 
-// HTTP/x.x
-
 bool is_http_version(const char *s, char major, char minor)
 {
+  // HTTP/x.x
   return (bool) (
     s[0] == u'H' && s[1] == u'T' && s[2] == u'T' &&
     s[3] == u'P' && s[4] == u'/' && s[5] == major &&
@@ -39,66 +51,74 @@ bool is_http_version(const char *s, char major, char minor)
   );
 }
 
-void parse_method(const char **string)
+bool parse_method(char **string)
 {
-  
-}
+  char *c = *string;
 
-void parse_request_target(const char **string)
-{
+  if (!is_tchar(*c)) return false;
 
-}
+  for (;;) {
+    if (is_sp(*c)) break;
+    if (!is_tchar(*c)) return false;
 
-void parse_http_version(const char **string)
-{
+    c++;
+  }
 
-}
-
-bool parse_request_line(const char **string)
-{
-  // make spaces nul terminators
-  // make cr nul terminator
-  // G must be tchar
-  // E must be tchar
-  // T must be tchar
-  // if not tchar we return DATA THAT ISTSNOT THCAR
-  // BAD STNRAX
-
-  // XXX stttart
-  #include <stdio.h>
-  // char *method = string
-  // int rc = parse_method(&string);
-  // if (!rc) exit
-  // char *request_line = string;
-  // parse_request_line(&string);
-
-  parse_method(string);
-  parse_request_target(string);
-  parse_http_version(string);
+  *c = '\0';
+  *string = c + 1;
 
   return true;
 }
 
-void test_cases()
+bool parse_request_target(char **string)
 {
-  assert(is_sp(' ') == true);
-  assert(is_sp('a') == false);
+  (void)string;
+  return false;
+}
 
-  assert(is_vchar(' ') == false);
-  assert(is_vchar(';') == true);
 
-  assert(is_delimiter(';') == true);
-  assert(is_delimiter('a') == false);
-  
-  assert(is_tchar('z') == true);
-  assert(is_tchar(';') == false);
 
-  {
-    char request_line[] = "GET / HTTP/1.1";
-    char request_line2[] = "G;t / HtTP/1.1";
+bool parse_http_version(char **string)
+{
+  char *s = *string;
 
-    // :O Test driven development??
-    assert(parse_method(true) == true);
-    assert(parse_method(false) == false);
+  if (s[0] == u'H' && s[1] == u'T'   && s[2] == u'T'  &&
+      s[3] == u'P' && s[4] == u'/'   && isdigit(s[5]) &&
+      s[6] == u'.' && isdigit(s[7])  &&
+      is_crlf(s[8], s[9])) {
+
+    puts("if statement passed");
+    s[8] = '\0';
+    *string = s + 10;
+    return true;
   }
+  return false;
+}
+
+struct request_line {
+  char *method;
+  char *request_target;
+  char *http_version;
+};
+
+bool parse_request_line(char **string,
+  struct request_line *request_line)
+{
+  char *method = *string;
+  if (!parse_method(string)) return false;
+
+  char *request_target = *string;
+  if (!parse_request_target(string)) return false;
+
+  char *http_version = *string;
+  if (!parse_http_version(string)) return false;
+
+  *request_line = (struct request_line) {
+    .method = method,
+    .request_target = request_target,
+    .http_version = http_version
+  };
+
+  return true;
+
 }

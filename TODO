@@ -3,9 +3,11 @@ GOAL:
   [_] Handle GET requests
 
 TODO:
-  [_] Plan the implementation
-  [_] Clean up previous code
-  [_] Respond to all GET requests
+  [_] Clean up server code
+  [_] Parse request line
+  [_] Write tests
+      [_] Choose between "test" and "tests"
+  [_] Write my own assert macro??
 
 Suggestions:
   readv

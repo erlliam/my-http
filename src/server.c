@@ -20,92 +20,161 @@ struct sockets {
 
 struct address {
   char ip[INET6_ADDRSTRLEN];
-  // XXX use in_port_t (uint16_t) in_port_t
-  unsigned short port;
+  in_port_t port;
 };
 
+bool create_server(const char *node, const char *service, int *fd, struct sockaddr_storage *addr);
+void accept_connections(int server_fd, struct sockaddr_storage server_addr);
 static int attempt_to_listen(struct addrinfo *addrinfo);
 static struct address get_address(struct sockaddr_storage addr);
-static void accept_client(struct sockets *sockets,
-  size_t index);
-static void recv_client(struct sockets *sockets,
-  size_t index);
+static void accept_client(struct sockets *sockets, size_t index);
+static void recv_client(struct sockets *sockets, size_t index);
 static void *get_in_addr(struct sockaddr *sa);
 
-int create_server(const char *node, const char *service)
+static struct sockets create_sockets();
+static void add_to_sockets(struct sockets *sockets, int fd, struct sockaddr_storage addr);
+static void del_from_sockets(struct sockets *sockets, int index);
+
+void run_server(char *ip, char *port)
+{
+  int server_fd;
+  struct sockaddr_storage server_addr;
+
+  if (create_server(ip, port, &server_fd,
+      &server_addr)) {
+
+    printf("run_server():\n"
+      "\tint server_fd: %d\n", server_fd);
+    accept_connections(server_fd, server_addr);
+  } else {
+    exit(EXIT_FAILURE);
+  }
+}
+
+bool create_server(const char *node, const char *service,
+  int *fd, struct sockaddr_storage *addr)
 {
   struct addrinfo hints = {
     .ai_family = AF_UNSPEC,
     .ai_flags = AI_PASSIVE,
-    .ai_protocol = getprotobyname("tcp")->p_proto,
+    .ai_protocol = getprotobyname("TCP")->p_proto,
     .ai_socktype = SOCK_STREAM,
   };
 
-  // XXX make use of this addrinfffffo
   struct addrinfo *res;
-
   int gair = getaddrinfo(node, service, &hints, &res);
   if (gair != 0) {
-    fprintf(stderr, "getaddrinfo error: %s\n",
-      gai_strerror(gair));
-    exit(EXIT_FAILURE);
+    fprintf(stderr,
+      "getaddrinfo error: %s\n", gai_strerror(gair));
+    return false;
   }
-
-  int socket_fd;
 
   for (struct addrinfo *r = res; r != NULL;
        r = r->ai_next) {
-    socket_fd = attempt_to_listen(r);
-    if (socket_fd != -1) {
-      break;
+    int sock_fd = attempt_to_listen(r);
+
+    if (sock_fd != -1) {
+      *fd = sock_fd;
+      int port;
+
+      char ip[INET6_ADDRSTRLEN];
+
+      struct sockaddr *sa = r->ai_addr;
+      if (sa->sa_family == AF_INET) {
+        struct sockaddr_in *in = (struct sockaddr_in *)sa;
+
+        inet_ntop(AF_INET, &(in->sin_addr),
+          ip, sizeof(ip));
+        port = ntohs(in->sin_port);
+      } else if (sa->sa_family == AF_INET6) {
+        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)sa;
+
+        inet_ntop(AF_INET6, &(in6->sin6_addr),
+          ip, sizeof(ip));
+        port = ntohs(in6->sin6_port);
+      }
+
+      // XXX turn :: to [::]
+      printf("http://%s:%d\n", ip, port);
+
+      freeaddrinfo(res);
+      return true;
     }
   }
 
   freeaddrinfo(res);
-
-  return socket_fd;
+  return false;
 }
 
-static int attempt_to_listen(
-  struct addrinfo *addrinfo)
+
+void accept_connections(int server_fd,
+  struct sockaddr_storage server_addr)
 {
-  int reuseaddr = 1;
+  struct sockets sockets = create_sockets();
+  add_to_sockets(&sockets, server_fd, server_addr);
 
-  int socket_fd = socket(addrinfo->ai_family,
-    addrinfo->ai_socktype, addrinfo->ai_protocol);
+  puts("accepting connections");
 
-  if (socket_fd == -1) {
+  for (;;) {
+    int poll_count = poll(sockets.pfds, sockets.length, -1);
+    if (poll_count == -1) {
+      perror("poll error");
+      puts("exiting.");
+      // XXX Probably shouldn't exit
+      exit(EXIT_FAILURE);
+    }
+
+    for (size_t i = 0; i < sockets.length; i++) {
+      // XXX Not sure how revents works.
+      // Something involving bit masks?
+      if (sockets.pfds[i].revents == POLLIN) {
+        if (sockets.pfds[i].fd == server_fd) {
+          accept_client(&sockets, i);
+        } else {
+          recv_client(&sockets, i);
+        }
+      }
+    } // loop through sockets.pfds[]
+  } // infinite loop
+}
+
+static int attempt_to_listen(struct addrinfo *ai)
+{
+  int sock_fd = socket(ai->ai_family, ai->ai_socktype,
+    ai->ai_protocol);
+  if (sock_fd == -1) {
     perror("socket error");
     return -1;
   }
 
-  if (setsockopt(socket_fd, SOL_SOCKET,
-      SO_REUSEADDR,
-      &reuseaddr, sizeof(reuseaddr)) == -1) {
+  int REUSEADDR = 1;
+  if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR,
+      &REUSEADDR, sizeof(REUSEADDR)) == -1) {
     perror(
       "continuing without SO_REUSEADDR\n"
       "setsockopt error");
   }
 
-  if (bind(socket_fd, addrinfo->ai_addr,
-      addrinfo->ai_addrlen)) {
+  if (bind(sock_fd, ai->ai_addr, ai->ai_addrlen) == -1) {
     perror("bind error");
-    goto error;
+    goto cleanup;
   }
 
-  if (listen(socket_fd, 5) == -1) {
+  if (listen(sock_fd, 5) == -1) {
     perror("listen error");
-    goto error;
+    goto cleanup;
   }
   
-  return socket_fd;
+  return sock_fd;
 
-  error:
-    close(socket_fd);
+  cleanup:
+    close(sock_fd);
     return -1;
 }
 
-static struct sockets create_sockets() {
+static struct sockets create_sockets()
+{
+  // XXX SMELL?
   size_t capacity = 5;
   return (struct sockets) {
     .pfds = malloc(sizeof(struct pollfd) * capacity),
@@ -152,41 +221,14 @@ static void add_to_sockets(struct sockets *sockets, int fd,
 static void del_from_sockets(struct sockets *sockets,
   int index)
 {
-  // XXX unstore ip and port?
+  // XXX should previous data be deleted or is it ok to
+  // just overwrite as needed
+
   sockets->pfds[index].revents = 0;
+  // set revents to 0 to prevent blocking on recv
   sockets->pfds[index] = sockets->pfds[sockets->length - 1];
 
   sockets->length--;
-}
-
-void accept_connections(const int server_fd)
-{
-  struct sockets sockets = create_sockets();
-  // XXX fill with server sockaddr
-  struct sockaddr_storage empty;
-  add_to_sockets(&sockets, server_fd, empty);
-
-  for (;;) {
-    int poll_count = poll(sockets.pfds, sockets.length, -1);
-    if (poll_count == -1) {
-      perror("poll error");
-      puts("exiting.");
-      // XXX Probably shouldn't exit
-      exit(EXIT_FAILURE);
-    }
-
-    for (size_t i = 0; i < sockets.length; i++) {
-      // XXX Not sure how revents works.
-      // Something involving bit masks?
-      if (sockets.pfds[i].revents == POLLIN) {
-        if (sockets.pfds[i].fd == server_fd) {
-          accept_client(&sockets, i);
-        } else {
-          recv_client(&sockets, i);
-        }
-      }
-    } // loop through sockets.pfds[]
-  } // infinite loop
 }
 
 static void accept_client(struct sockets *sockets,
@@ -196,6 +238,7 @@ static void accept_client(struct sockets *sockets,
 
   struct sockaddr_storage addr;
   socklen_t addr_len = sizeof(addr);
+
   int client_fd = accept(fd, (struct sockaddr *)&addr,
     &addr_len);
 
