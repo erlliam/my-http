@@ -59,10 +59,7 @@ bool parse_token(char **string)
   if (!is_tchar(*c)) return false;
   c++;
 
-  for (;;) {
-    if (!is_tchar(*c)) break;
-    c++;
-  }
+  for (; is_tchar(*c); c++);
 
   *string = c;
 
@@ -86,8 +83,6 @@ bool parse_request_target(char **string)
   (void)string;
   return false;
 }
-
-
 
 bool parse_http_version(char **string)
 {

@@ -23,25 +23,29 @@ void run_test_syntax(void)
 void test_parse_method(void)
 {
   {
-    char string[] = "GET / HTTP/1.1";
+    char request_line[] = "GET / HTTP/1.1";
+    char *start = request_line;
+    char *current_position = request_line;
 
-    char *method = string;
-    char *p_string = string;
-
-    assert(parse_method(&p_string));
-    assert(*(method + 3) == '\0');
-    assert(strcmp("GET", method) == 0);
-    assert(p_string == method + 4);
+    assert(parse_method(&current_position));
+    assert(strcmp("GET", start) == 0);
+    assert(current_position == start + 4);
   }
   {
-    char string[] = " GET / HTTP/1.1";
-    char *p_string = string;
-    assert(!parse_method(&p_string));
+    char request_line[] = " GET / HTTP/1.1";
+    char *start = request_line;
+    char *current_position = request_line;
+
+    assert(!parse_method(&current_position));
+    assert(current_position == start);
   }
   {
-    char string[] = ";ET / HTTP/1.1";
-    char *p_string = string;
-    assert(!parse_method(&p_string));
+    char request_line[] = "G;ET / HTTP/1.1";
+    char *start = request_line;
+    char *current_position = request_line;
+
+    assert(!parse_method(&current_position));
+    assert(current_position == start + 1);
   }
 }
 

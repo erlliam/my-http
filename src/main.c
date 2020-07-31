@@ -5,7 +5,7 @@
 
 int main(void)
 {
-  run_server("::", "5000");
+  run_server("0", "5000");
 
   return EXIT_SUCCESS;
 }

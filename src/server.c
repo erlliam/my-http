@@ -19,40 +19,52 @@ struct sockets {
 };
 
 struct address {
+  sa_family_t family;
   char ip[INET6_ADDRSTRLEN];
   in_port_t port;
 };
 
-bool create_server(const char *node, const char *service, int *fd, struct sockaddr_storage *addr);
-void accept_connections(int server_fd, struct sockaddr_storage server_addr);
+bool create_server(const char *node, const char *service,
+  int *fd, struct address *address);
+void accept_connections(int fd, struct address address);
 static int attempt_to_listen(struct addrinfo *addrinfo);
-static struct address get_address(struct sockaddr_storage addr);
+void get_address2(struct sockaddr *sa, struct address *address);
 static void accept_client(struct sockets *sockets, size_t index);
 static void recv_client(struct sockets *sockets, size_t index);
-static void *get_in_addr(struct sockaddr *sa);
 
 static struct sockets create_sockets();
-static void add_to_sockets(struct sockets *sockets, int fd, struct sockaddr_storage addr);
-static void del_from_sockets(struct sockets *sockets, int index);
+static void add_to_sockets(struct sockets *sockets,
+  int fd, struct address address);
+static void del_from_sockets(struct sockets *sockets,
+  int index);
 
 void run_server(char *ip, char *port)
 {
-  int server_fd;
-  struct sockaddr_storage server_addr;
+  int fd;
+  struct address address;
 
-  if (create_server(ip, port, &server_fd,
-      &server_addr)) {
+  if (create_server(ip, port, &fd,
+      &address)) {
 
-    printf("run_server():\n"
-      "\tint server_fd: %d\n", server_fd);
-    accept_connections(server_fd, server_addr);
+    printf(
+      "%s():\n"
+      "\tfd: %d\n", __func__, fd);
+
+    address.family == AF_INET ?
+      printf("\thttp://%s:%d\n",
+        address.ip, address.port):
+      printf("\thttp://[%s]:%d\n",
+        address.ip, address.port);
+
+    accept_connections(fd, address);
+
   } else {
     exit(EXIT_FAILURE);
   }
 }
 
 bool create_server(const char *node, const char *service,
-  int *fd, struct sockaddr_storage *addr)
+  int *fd, struct address *address)
 {
   struct addrinfo hints = {
     .ai_family = AF_UNSPEC,
@@ -71,55 +83,31 @@ bool create_server(const char *node, const char *service,
 
   for (struct addrinfo *r = res; r != NULL;
        r = r->ai_next) {
-    int sock_fd = attempt_to_listen(r);
+    *fd = attempt_to_listen(r);
 
-    if (sock_fd != -1) {
-      *fd = sock_fd;
-      int port;
+    if (*fd != -1) {
+      get_address2(r->ai_addr, address);
 
-      char ip[INET6_ADDRSTRLEN];
-
-      struct sockaddr *sa = r->ai_addr;
-      if (sa->sa_family == AF_INET) {
-        struct sockaddr_in *in = (struct sockaddr_in *)sa;
-
-        inet_ntop(AF_INET, &(in->sin_addr),
-          ip, sizeof(ip));
-        port = ntohs(in->sin_port);
-      } else if (sa->sa_family == AF_INET6) {
-        struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)sa;
-
-        inet_ntop(AF_INET6, &(in6->sin6_addr),
-          ip, sizeof(ip));
-        port = ntohs(in6->sin6_port);
-      }
-
-      // XXX turn :: to [::]
-      printf("http://%s:%d\n", ip, port);
-
-      freeaddrinfo(res);
-      return true;
+      break;
     }
   }
 
   freeaddrinfo(res);
-  return false;
+  return (*fd != -1);
 }
 
-
 void accept_connections(int server_fd,
-  struct sockaddr_storage server_addr)
+  struct address address)
 {
   struct sockets sockets = create_sockets();
-  add_to_sockets(&sockets, server_fd, server_addr);
+  add_to_sockets(&sockets, server_fd, address);
 
-  puts("accepting connections");
+  printf("%s()\n", __func__);
 
   for (;;) {
     int poll_count = poll(sockets.pfds, sockets.length, -1);
     if (poll_count == -1) {
       perror("poll error");
-      puts("exiting.");
       // XXX Probably shouldn't exit
       exit(EXIT_FAILURE);
     }
@@ -185,7 +173,7 @@ static struct sockets create_sockets()
 }
 
 static void add_to_sockets(struct sockets *sockets, int fd,
-  struct sockaddr_storage addr)
+  struct address address)
 {
   if (sockets->length == sockets->capacity) {
     sockets->capacity *= 2;
@@ -213,7 +201,7 @@ static void add_to_sockets(struct sockets *sockets, int fd,
 
   sockets->pfds[sockets->length].fd = fd;
   sockets->pfds[sockets->length].events = POLLIN;
-  sockets->address[sockets->length] = get_address(addr);
+  sockets->address[sockets->length] = address;
 
   sockets->length++;
 }
@@ -236,10 +224,10 @@ static void accept_client(struct sockets *sockets,
 {
   int fd = sockets->pfds[index].fd;
 
-  struct sockaddr_storage addr;
-  socklen_t addr_len = sizeof(addr);
+  struct sockaddr_storage sa_s;
+  socklen_t addr_len = sizeof(sa_s);
 
-  int client_fd = accept(fd, (struct sockaddr *)&addr,
+  int client_fd = accept(fd, (struct sockaddr *)&sa_s,
     &addr_len);
 
   if (client_fd == -1) {
@@ -247,7 +235,10 @@ static void accept_client(struct sockets *sockets,
     return;
   }
 
-  add_to_sockets(sockets, client_fd, addr);
+  struct address address;
+  get_address2((struct sockaddr *)&sa_s, &address);
+
+  add_to_sockets(sockets, client_fd, address);
 }
 
 static void recv_client(struct sockets *sockets,
@@ -260,74 +251,45 @@ static void recv_client(struct sockets *sockets,
 
   if (rb <= 0) {
     if (rb == 0) {
-      printf(
-        "client disconnected:\n"
+      // XXX Print [] for IPv6?
+      printf("client disconnected:\n"
         "\t%s:%d\n",
         sockets->address[index].ip,
         sockets->address[index].port);
+
     } else {
       perror("recv error");
     }
+
     del_from_sockets(sockets, index);
     close(fd);
   }
 
   buffer[rb] = '\0';
-  printf("%d: %s\n", fd, buffer);
+  // XXX remove this "chat" crap
+  if (rb > 0) printf("%d: %s\n", fd, buffer);
 }
 
-
-static struct address get_address(struct sockaddr_storage addr)
+void get_address2(struct sockaddr *sa,
+  struct address *address)
 {
-  char client_ip[INET6_ADDRSTRLEN];
-  const char *rc = inet_ntop(addr.ss_family,
-    get_in_addr((struct sockaddr *)&addr),
-    client_ip, sizeof(client_ip));
+  address->family = sa->sa_family;
 
-  if (rc == NULL) {
-    // XXX should we set ip to null pointer?
-    return (struct address) {
-      .ip = "Hi",
-      .port = 0
-    };
-  }
-
-  struct address address;
-  // XXX error check
-  snprintf(address.ip, INET6_ADDRSTRLEN, "%s", client_ip);
-
-  if (addr.ss_family == AF_INET) {
-    address.port = ntohs(
-      ((struct sockaddr_in *)&addr)->sin_port);
-  } else if (addr.ss_family == AF_INET6) {
-    address.port = ntohs(
-      ((struct sockaddr_in6 *)&addr)->sin6_port);
-  } else {
-    address.port = 0;
-  }
-  
-  // XXX
-  printf(
-    "client connected:\n"
-    "\t%s:%d\n",
-    address.ip,
-    address.port);
-  // printf("client connected:\n"
-  //   "\tip:    %s\n"
-  //   "\tport:  %d\n",
-  //   address.ip,
-  //   address.port);
-  
-  return address;
-}
-
-// function from: https://beej.us/guide/bgnet/examples/pollserver.c
-
-static void *get_in_addr(struct sockaddr *sa)
-{
   if (sa->sa_family == AF_INET) {
-    return &(((struct sockaddr_in *)sa)->sin_addr);
-  }
+    struct sockaddr_in *in = (struct sockaddr_in *)sa;
 
-  return &(((struct sockaddr_in6 *)sa)->sin6_addr);
+    // XXX error check
+    inet_ntop(AF_INET, &(in->sin_addr),
+      address->ip, sizeof(address->ip));
+
+    address->port = ntohs(in->sin_port);
+  } else if (sa->sa_family == AF_INET6) {
+    struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)sa;
+
+    // XXX error check
+    inet_ntop(AF_INET6, &(in6->sin6_addr),
+      address->ip, sizeof(address->ip));
+
+    address->port = ntohs(in6->sin6_port);
+  }
 }
