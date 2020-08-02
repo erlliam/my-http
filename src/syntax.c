@@ -146,9 +146,12 @@ bool parse_field_name(char **string)
 // Deals with OWS
 bool parse_field_value(char **string)
 {
-  // XXX Handle empty field value
   char *c = *string;
   char *last_vchar = NULL;
+
+  // Empty field-value
+  if (*c == 0xD) last_vchar = c - 1;
+
   for (; is_vchar(*c) || isblank(*c); c++) {
     if (is_vchar(*c)) last_vchar = c;
   }

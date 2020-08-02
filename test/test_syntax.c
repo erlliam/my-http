@@ -120,6 +120,7 @@ void test_parse_header_field(void)
       &current_position, &header_field));
   }
   {
+    puts("Final test.");
     char header_field_string[] =
       "Token:           \xD\xA";
     struct header_field header_field;
@@ -127,5 +128,7 @@ void test_parse_header_field(void)
 
     assert(parse_header_field(
       &current_position, &header_field));
+    assert(strcmp("Token", header_field.field_name) == 0);
+    assert(strcmp("", header_field.field_value) == 0);
   }
 }
