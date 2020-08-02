@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "syntax.h"
+
 const char delimiters[] = {
   0x22, 0x28, 0x29, 0x2C, 0x2F, 0x3A, 0x3B, 0x3C, 0x3D,
   0x3E, 0x3F, 0x40, 0x5B, 0x5C, 0x5D, 0x7B, 0x7D
@@ -144,11 +146,18 @@ bool parse_field_name(char **string)
 // Deals with OWS
 bool parse_field_value(char **string)
 {
+  // XXX Handle empty field value
   char *c = *string;
   char *last_vchar = NULL;
   for (; is_vchar(*c) || isblank(*c); c++) {
     if (is_vchar(*c)) last_vchar = c;
   }
+
+  // XXX we can do:
+  //   if not vchar, last_vchar == c - 1
+  //   if we have long word, we aren't setting
+  //   last_vchar every single letter
+  //   need to define special case (empty field value)
 
   if (!is_crlf(*c, *(c + 1))) return false;
 
@@ -159,16 +168,18 @@ bool parse_field_value(char **string)
   return true;
 }
 
-bool parse_header_field(char **string)
+bool parse_header_field(char **string,
+  struct header_field *header_field)
 {
   char *field_name = *string;
-  (void)field_name;
   if (!parse_field_name(string)) return false;
 
   char *field_value = *string;
   if (!parse_field_value(string)) return false;
-  (void)field_value;
-  
+
+  header_field->field_name = field_name;
+  header_field->field_value = field_value;
+
   return true;
 }
 

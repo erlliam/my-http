@@ -74,20 +74,58 @@ void test_parse_http_version(void)
 void test_parse_header_field(void)
 {
   {
-    char header_field[] = 
+    char header_field_string[] =
       "Server: Apache/2.2.22 (Debian)\xD\xA";
-    char *current_position = header_field;
+    struct header_field header_field;
+    char *current_position = header_field_string;
 
-    char *field_name = header_field;
-    char *field_value = header_field + 8;
-    assert(parse_header_field(&current_position));
-    assert(strcmp("Server", field_name) == 0);
+    assert(parse_header_field(
+      &current_position, &header_field));
+
+    assert(strcmp("Server", header_field.field_name) == 0);
     assert(strcmp(
-      "Apache/2.2.22 (Debian)", field_value) == 0);
-    assert(current_position == (header_field +
-      sizeof(header_field)) - 1);
+      "Apache/2.2.22 (Debian)",
+      header_field.field_value) == 0);
 
-    puts(field_name);
-    puts(field_value);
+    assert(current_position == (header_field_string +
+      sizeof(header_field_string)) - 1);
+  }
+  {
+    char header_field_string[] =
+      "xdlol:        We are parsing   nicely     \xD\xA";
+    struct header_field header_field;
+    char *current_position = header_field_string;
+
+    assert(parse_header_field(
+      &current_position, &header_field));
+
+    assert(strcmp("xdlol", header_field.field_name) == 0);
+    assert(strcmp(
+      "We are parsing   nicely",
+      // "We are parsing   nicely     ",
+      // XXX Got angry at test.
+      // Test was correct.
+      header_field.field_value) == 0);
+
+    assert(current_position == (header_field_string +
+      sizeof(header_field_string)) - 1);
+  }
+  {
+    char header_field_string[] =
+      "Not a token: Apache/2.2.22 (Debian)\xD\xA";
+    struct header_field header_field;
+    char *current_position = header_field_string;
+
+    assert(!parse_header_field(
+      &current_position, &header_field));
+  }
+  {
+    char header_field_string[] =
+      "Token:           \xD\xA";
+    struct header_field header_field;
+    char *current_position = header_field_string;
+
+    assert(parse_header_field(
+      &current_position, &header_field));
   }
 }
