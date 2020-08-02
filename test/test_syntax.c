@@ -10,6 +10,7 @@
 
 void test_parse_method(void);
 void test_parse_http_version(void);
+void test_parse_header_field(void);
 
 void run_test_syntax(void)
 {
@@ -18,6 +19,7 @@ void run_test_syntax(void)
   // test_parse_request_target();
   test_parse_http_version();
   // test_parse_request_line();
+  test_parse_header_field();
 }
 
 void test_parse_method(void)
@@ -69,30 +71,23 @@ void test_parse_http_version(void)
 
 }
 
-// void test_is_checks()
-// {
-//   assert(is_sp(' ') == true);
-//   assert(is_sp('a') == false);
-// 
-//   assert(is_vchar(' ') == false);
-//   assert(is_vchar(';') == true);
-// 
-//   assert(is_delimiter(';') == true);
-//   assert(is_delimiter('a') == false);
-//   
-//   assert(is_tchar('z') == true);
-//   assert(is_tchar(';') == false);
-// }
-// 
-// void test_parse_http_version() {
-//   char *request_line = malloc(256);
-//   snprintf(request_line, 256, "%s",
-//       "HTTP/1.1\r\n");
-// 
-//   char *http_version = request_line;
-// 
-//   assert(parse_http_version(&request_line));
-// 
-//   puts(http_version);
-//   free(http_version);
-// }
+void test_parse_header_field(void)
+{
+  {
+    char header_field[] = 
+      "Server: Apache/2.2.22 (Debian)\xD\xA";
+    char *current_position = header_field;
+
+    char *field_name = header_field;
+    char *field_value = header_field + 8;
+    assert(parse_header_field(&current_position));
+    assert(strcmp("Server", field_name) == 0);
+    assert(strcmp(
+      "Apache/2.2.22 (Debian)", field_value) == 0);
+    assert(current_position == (header_field +
+      sizeof(header_field)) - 1);
+
+    puts(field_name);
+    puts(field_value);
+  }
+}

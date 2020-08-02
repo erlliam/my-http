@@ -5,5 +5,6 @@
 
 bool parse_method(char **string);
 bool parse_http_version(char **string);
+bool parse_header_field(char **string);
 
 #endif

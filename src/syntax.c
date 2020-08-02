@@ -5,25 +5,25 @@
 #include <stdio.h>
 #include <string.h>
 
+const char delimiters[] = {
+  0x22, 0x28, 0x29, 0x2C, 0x2F, 0x3A, 0x3B, 0x3C, 0x3D,
+  0x3E, 0x3F, 0x40, 0x5B, 0x5C, 0x5D, 0x7B, 0x7D
+};
+
 bool is_sp(char c)
 {
   return (c == 0x20);
 }
 
-bool is_crlf(char cr, char lf)
+bool is_crlf(char first, char second)
 {
-  return (cr == 0xD && lf == 0xA);
+  return (first == 0xD && second == 0xA);
 }
 
 bool is_vchar(char c)
 {
   return (c >= 0x21 && c <= 0x7E);
 }
-
-char delimiters[] = {
-  0x22, 0x28, 0x29, 0x2C, 0x2F, 0x3A, 0x3B, 0x3C, 0x3D,
-  0x3E, 0x3F, 0x40, 0x5B, 0x5C, 0x5D, 0x7B, 0x7D
-};
 
 bool is_delimiter(char c)
 {
@@ -51,10 +51,39 @@ bool is_http_version(const char *s, char major, char minor)
   );
 }
 
+bool parse_char_and_null_terminate(char **string,
+  char parse)
+{
+  if (**string != parse) return false;
+
+  **string = '\0';
+  *string += 1;
+
+  return true;
+}
+
+bool parse_crlf(char **string)
+{
+  char *cr = *string;
+  char *lf = cr + 1;
+  if (!is_crlf(*cr, *lf)) return false;
+
+  *string = lf + 1;
+
+  return true;
+}
+
+void parse_ows(char **string)
+{
+  char *c = *string;
+  for (; isblank(*c); c++);
+
+  *string = c;
+}
+
+// min: 1 tchar, max: inf tchar
 bool parse_token(char **string)
 {
-  // min: 1 tchar, max: inf tchar
-
   char *c = *string;
   if (!is_tchar(*c)) return false;
   c++;
@@ -71,9 +100,8 @@ bool parse_method(char **string)
   if (!parse_token(string)) return false;
 
   // XXX maybe parse_sp function?
-  if (!is_sp(**string)) return false;
-  **string = '\0';
-  *string += 1;
+  if (!parse_char_and_null_terminate(string, u' '))
+    return false;
 
   return true;
 }
@@ -97,6 +125,51 @@ bool parse_http_version(char **string)
     return true;
   }
   return false;
+}
+
+bool parse_field_name(char **string)
+{
+  if (!parse_token(string)) return false;
+  if (!parse_char_and_null_terminate(string, u':'))
+    return false;
+
+  parse_ows(string);
+
+  return true;
+}
+
+// Whitelist.
+// Store last vchar.
+// Once you hit CRLF, null terminate at last vchar + 1
+// Deals with OWS
+bool parse_field_value(char **string)
+{
+  char *c = *string;
+  char *last_vchar = NULL;
+  for (; is_vchar(*c) || isblank(*c); c++) {
+    if (is_vchar(*c)) last_vchar = c;
+  }
+
+  if (!is_crlf(*c, *(c + 1))) return false;
+
+  *(last_vchar + 1) = '\0';
+  // LF + 1
+  *string = (c + 1) + 1;
+
+  return true;
+}
+
+bool parse_header_field(char **string)
+{
+  char *field_name = *string;
+  (void)field_name;
+  if (!parse_field_name(string)) return false;
+
+  char *field_value = *string;
+  if (!parse_field_value(string)) return false;
+  (void)field_value;
+  
+  return true;
 }
 
 struct request_line {
