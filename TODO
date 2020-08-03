@@ -5,26 +5,22 @@ GOAL:
 TODO:
   [_] Clean up server code
   [_] Parse request line
-  [_] Write tests
-      [_] Choose between "test" and "tests"
+  [_] Parse request target
   [_] Write my own assert macro??
+  [x] Write tests
 
 Suggestions:
   readv
   sendfile
 
-DRAFT
-  Create server
-    socket()
-    bind()
-    listen()
+Create server
+  socket()
+  bind()
+  listen()
 
-  Listen for requests
-    accept()
-    recv()
+Listen for requests
+  accept()
+  recv()
 
-  Respond to requests
-    send()
-
-  Problem
-    accept() and recv() both block
+Respond to requests
+  send()
