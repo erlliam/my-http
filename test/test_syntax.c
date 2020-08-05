@@ -9,16 +9,18 @@
 #include "syntax.h"
 
 void test_parse_method(void);
+void test_parse_request_target(void);
 void test_parse_http_version(void);
 void test_parse_header_field(void);
 
 void run_test_syntax(void)
 {
-  // test_is_checks();
   test_parse_method();
-  // test_parse_request_target();
+  test_parse_request_target();
   test_parse_http_version();
+
   // test_parse_request_line();
+
   test_parse_header_field();
 }
 
@@ -47,8 +49,17 @@ void test_parse_method(void)
     char *current_position = request_line;
 
     assert(!parse_method(&current_position));
-    assert(current_position == start + 1);
+    assert(current_position == start);
   }
+}
+
+
+void test_parse_request_target(void)
+{
+    char request_target_string[] = "/ HTTP/1.1";
+    char *current_position = request_target_string;
+
+    assert(parse_request_target(&current_position));
 }
 
 void test_parse_http_version(void)
