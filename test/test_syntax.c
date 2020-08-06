@@ -56,10 +56,30 @@ void test_parse_method(void)
 
 void test_parse_request_target(void)
 {
+  {
+    char request_target_string[] = "/hi/hi/?omghiHTTP/1.1";
+    char *current_position = request_target_string;
+
+    assert(!parse_request_target(&current_position));
+  }
+  {
     char request_target_string[] = "/ HTTP/1.1";
     char *current_position = request_target_string;
 
     assert(parse_request_target(&current_position));
+  }
+  {
+    char request_target_string[] = "/hi/hi/%";
+    char *current_position = request_target_string;
+
+    assert(!parse_request_target(&current_position));
+  }
+  {
+    char request_target_string[] = "/hi/hi/%AF HTTP/1.1";
+    char *current_position = request_target_string;
+
+    assert(parse_request_target(&current_position));
+  }
 }
 
 void test_parse_http_version(void)

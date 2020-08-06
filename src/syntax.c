@@ -40,6 +40,7 @@ static bool is_vchar(char c)
 
 static bool is_delimiter(char c)
 {
+  if (c == '\0') return false;
   char *sr = strchr(delimiters, c);
 
   return sr != NULL;
@@ -82,6 +83,7 @@ static bool is_pct_encoded(char *s)
 
 static bool is_sub_delim(char c)
 {
+  if (c == '\0') return false;
   char *sr = strchr(sub_delims, c);
 
   return sr != NULL;
@@ -89,6 +91,11 @@ static bool is_sub_delim(char c)
 
 static bool is_pchar(char *s)
 {
+  /*pchar: unreserved / pct-encoded / sub-delims / ":" / "@"
+      unreserved: ALPHA / DIGIT / "-" / "." / "_" / "~"
+      pct-encoded: "%" HEXDIG HEXDIG
+      sub-delims: "!" / "$" / "&" / "'" / "(" / ")" / "*"
+                      / "+" / "," / ";" / "=" */
   return is_unreserved(*s) || is_pct_encoded(s)
     || is_sub_delim(*s) || *s == ':' || *s == '@';
 }
@@ -172,29 +179,35 @@ bool parse_method(char **string)
 
 bool parse_request_target(char **string)
 {
-  /*
-request-target:
-  [_] origin-form = absolute-path:
-    absolute-path: [ "?" query ]
-      absolute-path: 1*( "/" segment )
-        segment: *pchar
-          pchar: unreserved / pct-encoded / sub-delims / ":" / "@"
-            unreserved: ALPHA / DIGIT / "-" / "." / "_" / "~"
-            pct-encoded: "%" HEXDIG HEXDIG
-            sub-delims: "!" / "$" / "&" / "'" / "(" / ")" / "*" / "+" / "," / ";" / "="
-      query: *( pchar / "/" / "?" )
+  // origin-form: absolute-path [ "?" query ]
+  //   absolute-path: 1*( "/" segment )
+  //     absolute-path is a / and a segment.
+  //     there must always be a / and a segment.
+  //     a segment can be empty.
+  //     segment: *pchar
 
-  [_] absolute-form = absolute-URI
-    absolute-URI: scheme ":" hier-part [ "?" query ]
-      scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
-      hier-part: "//" authority path-abempty
-                      / path-absolute
-                      / path-rootless
-                      / path-empty
-      query: *( pchar / "/" / "?" )
-  [_] authority-form
-  [_] asterik-form
-  */
+  //   query: *( pchar / "/" / "?" )
+
+  // Check for /
+  // Start checking for segments.
+  // If you are not a segment:
+  //   you might be the start of the query.
+  //   if you are not the start of the query:
+  //     the request_target must be done
+  //     (you are a space)
+
+  if (!parse_char(string, '/')) return false;
+
+  do {
+    for (; is_pchar(*string); *string += 1);
+  } while (parse_char(string, '/'));
+
+  if (parse_char(string, '?')) {
+    for (; is_query(*string); *string += 1);
+  }
+
+  if (parse_char(string, ' ')) return true;
+
   return false;
 }
 

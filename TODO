@@ -10,6 +10,8 @@ TODO:
   [x] Write tests
 
 Suggestions:
+  Rename bin to build
+  Rename static to www or public?
   readv
   sendfile
 
