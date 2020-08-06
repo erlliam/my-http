@@ -20,91 +20,82 @@ const char sub_delims[] = "!$&'()*+,;=";
 
 static bool is_sp(char c)
 {
-  return (c == 0x20);
+  return c == 0x20;
 }
 
 static bool is_wsp(char c)
 {
-  return (c == '\t' || is_sp(c));
+  return c == '\t' || is_sp(c);
 }
 
 static bool is_crlf(char first, char second)
 {
-  return (first == '\r' && second == '\n');
+  return first == '\r' && second == '\n';
 }
 
 static bool is_vchar(char c)
 {
-  return (c >= 0x21 && c <= 0x7E);
+  return c >= 0x21 && c <= 0x7E;
 }
 
 static bool is_delimiter(char c)
 {
-  for (size_t i = 0; i < strlen(delimiters); i++) {
-    if (c == delimiters[i]) {
-      return true;
-    }
-  }
+  char *sr = strchr(delimiters, c);
 
-  return false;
+  return sr != NULL;
 }
 
 static bool is_tchar(char c)
 {
-  return (is_vchar(c) && !is_delimiter(c));
+  return is_vchar(c) && !is_delimiter(c);
 }
 
 static bool is_alpha(char c)
 {
-  // A-Z, a-z
-  return ((c >= 0x41 && c <= 0x5A)
-       || (c >= 0x61 && c <= 0x7A));
-
+  return ('A' <= c && c <= 'Z')
+    || ('a' <= c && c <= 'z');
 }
 
 static bool is_digit(char c)
 {
-  // 0-9
-  return (c >= 0x30 && c <= 0x39);
+  return '0' <= c && c <= '9';
 }
 
 static bool is_hex_digit(char c) {
-  return ((is_digit(c)) || (c >= 0x41 && c <= 0x46));
+  return (is_digit(c))
+    || ('A' <= c && c <= 'F')
+    || ('a' <= c && c <= 'f');
 }
 
 static bool is_unreserved(char c)
 {
-  return (is_alpha(c) || is_digit(c) || c == '-'
-          || c == '.' || c == '_' || c == '~');
+  return is_alpha(c) || is_digit(c)
+    || c == '-' || c == '.' || c == '_' || c == '~';
 }
 
 static bool is_pct_encoded(char *s)
 {
-  return (*s == '%' && is_hex_digit(*(s + 1))
-          && is_hex_digit(*(s + 2)));
+  return s[0] == '%'
+    && is_hex_digit(s[1])
+    && is_hex_digit(s[2]);
 }
-
 
 static bool is_sub_delim(char c)
 {
-  for (size_t i = 0; i < strlen(sub_delims); i++) {
-    if (c == sub_delims[i]) {
-      return true;
-    }
-  }
+  char *sr = strchr(sub_delims, c);
 
-  return false;
+  return sr != NULL;
 }
 
 static bool is_pchar(char *s)
 {
-  return (is_unreserved(*s) || is_pct_encoded(s)
-          || is_sub_delim(*s) || *s == ':' || *s == '@');
+  return is_unreserved(*s) || is_pct_encoded(s)
+    || is_sub_delim(*s) || *s == ':' || *s == '@';
 }
 
 static bool is_query(char *s)
 {
-  return (is_pchar(s) || *s == '/' || *s == '?');
+  return is_pchar(s) || *s == '/' || *s == '?';
 }
 
 static bool parse_char(char **string, char parse)
@@ -181,11 +172,10 @@ bool parse_method(char **string)
 
 bool parse_request_target(char **string)
 {
-  
   /*
 request-target:
-  [_] origin-form:
-    absolute-path [ "?" query ]
+  [_] origin-form = absolute-path:
+    absolute-path: [ "?" query ]
       absolute-path: 1*( "/" segment )
         segment: *pchar
           pchar: unreserved / pct-encoded / sub-delims / ":" / "@"
@@ -193,7 +183,15 @@ request-target:
             pct-encoded: "%" HEXDIG HEXDIG
             sub-delims: "!" / "$" / "&" / "'" / "(" / ")" / "*" / "+" / "," / ";" / "="
       query: *( pchar / "/" / "?" )
-  [_] absolute-form
+
+  [_] absolute-form = absolute-URI
+    absolute-URI: scheme ":" hier-part [ "?" query ]
+      scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+      hier-part: "//" authority path-abempty
+                      / path-absolute
+                      / path-rootless
+                      / path-empty
+      query: *( pchar / "/" / "?" )
   [_] authority-form
   [_] asterik-form
   */
