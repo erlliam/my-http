@@ -11,6 +11,7 @@
     Rewrite parsing code:
       Do not modify the data until it succeeds
       Think about what should happen when it fails
+    These two things will complicate things
 */
 const char delimiters[] = "\"(),/:;<=>?@[\\]{}";
 const char sub_delims[] = "!$&'()*+,;=";
@@ -40,10 +41,9 @@ static bool is_vchar(char c)
 
 static bool is_delimiter(char c)
 {
-  if (c == '\0') return false;
   char *sr = strchr(delimiters, c);
 
-  return sr != NULL;
+  return c != '\0' && sr != NULL;
 }
 
 static bool is_tchar(char c)
@@ -83,10 +83,9 @@ static bool is_pct_encoded(char *s)
 
 static bool is_sub_delim(char c)
 {
-  if (c == '\0') return false;
   char *sr = strchr(sub_delims, c);
 
-  return sr != NULL;
+  return c != '\0' && sr != NULL;
 }
 
 static bool is_pchar(char *s)
@@ -156,46 +155,34 @@ static bool parse_token(char **string)
 
   return true;
 }
+// origin-form: absolute-path [ "?" query ]
+//   absolute-path: 1*( "/" segment )
+//     absolute-path is a / and a segment.
+//     there must always be a / and a segment.
+//     a segment can be empty.
+//     segment: *pchar
+
+//   query: *( pchar / "/" / "?" )
+
+// Check for /
+// Start checking for segments.
+// If you are not a segment:
+//   you might be the start of the query.
+//   if you are not the start of the query:
+//     the request_target must be done
+//     (you are a space)
 
 // XXX it parses method and null terminates...
 // I don't like the name parse_method
 bool parse_method(char **string)
 {
-  char *start_position = *string;
-
-  if (!parse_token(string)) goto fail;
-
-  char *sp = *string;
-  if (!parse_char(string, ' ')) goto fail;
-
-  *sp = '\0';
+  if (!parse_token(string)) return false;
+  if (!parse_char(string, ' ')) return false;
 
   return true;
-
-  fail:
-    *string = start_position;
-    return false;
 }
-
 bool parse_request_target(char **string)
 {
-  // origin-form: absolute-path [ "?" query ]
-  //   absolute-path: 1*( "/" segment )
-  //     absolute-path is a / and a segment.
-  //     there must always be a / and a segment.
-  //     a segment can be empty.
-  //     segment: *pchar
-
-  //   query: *( pchar / "/" / "?" )
-
-  // Check for /
-  // Start checking for segments.
-  // If you are not a segment:
-  //   you might be the start of the query.
-  //   if you are not the start of the query:
-  //     the request_target must be done
-  //     (you are a space)
-
   if (!parse_char(string, '/')) return false;
 
   do {
@@ -206,30 +193,43 @@ bool parse_request_target(char **string)
     for (; is_query(*string); *string += 1);
   }
 
-  if (parse_char(string, ' ')) return true;
+  if (!parse_char(string, ' ')) return false;
 
-  return false;
+  return true;
 }
 
+// XXX Hard coded http_version
 bool parse_http_version(char **string)
 {
   char *s = *string;
 
-  if (s[0] == 'H' && s[1] == 'T'   && s[2] == 'T'  &&
-      s[3] == 'P' && s[4] == '/'   && isdigit(s[5]) &&
-      s[6] == '.' && isdigit(s[7])) {
-    return true;
-  }
-  return false;
+  if (!(s[0] == 'H' && s[1] == 'T' && s[2] == 'T' &&
+        s[3] == 'P' && s[4] == '/' && s[5] == '1' &&
+        s[6] == '.' && s[7] == '1')) return false;
+
+  *string = s + 8;
+
+  return true;
 }
 
 bool parse_request_line(char **string,
   struct request_line *request_line)
 {
-  // XXX
-  (void)string;
-  (void)request_line;
-  return false;
+  char *method = *string;
+  if (!parse_method(string)) return false;
+
+  char *request_target = *string;
+  if (!parse_request_target(string)) return false;
+
+  char *http_version = *string;
+  if (!parse_http_version(string)) return false;
+
+  // XXX null terminate when?
+  request_line->method = method;
+  request_line->request_target = request_target;
+  request_line->http_version = http_version;
+
+  return true;
 }
 
 bool parse_field_name(char **string)

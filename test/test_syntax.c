@@ -11,15 +11,18 @@
 void test_parse_method(void);
 void test_parse_request_target(void);
 void test_parse_http_version(void);
+
+void test_parse_request_line(void);
+
 void test_parse_header_field(void);
 
 void run_test_syntax(void)
 {
-  test_parse_method();
-  test_parse_request_target();
-  test_parse_http_version();
+  // test_parse_method();
+  // test_parse_request_target();
+  // test_parse_http_version();
 
-  // test_parse_request_line();
+  test_parse_request_line();
 
   test_parse_header_field();
 }
@@ -99,7 +102,46 @@ void test_parse_http_version(void)
     char *p_string = string;
     assert(!parse_http_version(&p_string));
   }
+}
 
+void test_parse_request_line(void)
+{
+  {
+    char request_line_string[] =
+      "GET / HTTP/1.1\r\n";
+    struct request_line request_line;
+    char *current_position = request_line_string;
+
+    assert(parse_request_line(
+      &current_position, &request_line));
+
+    puts(request_line.method);
+    puts(request_line.request_target);
+    puts(request_line.http_version);
+    puts(current_position);
+    
+    assert(strcmp(request_line.method, "GET") == 0);
+    assert(strcmp(request_line.request_target, "/") == 0);
+    assert(strcmp(request_line.http_version, "HTTP/1.1") == 0);
+  }
+  {
+    char request_line_string[] =
+      "GeT /% HTTP/1.1\r\n";
+    struct request_line request_line;
+    char *current_position = request_line_string;
+
+    assert(parse_request_line(
+      &current_position, &request_line));
+  }
+  {
+    char request_line_string[] =
+      "GET /% HTTP/1.1\r\n";
+    struct request_line request_line;
+    char *current_position = request_line_string;
+
+    assert(parse_request_line(
+      &current_position, &request_line));
+  }
 }
 
 void test_parse_header_field(void)
@@ -194,3 +236,5 @@ void test_parse_header_field(void)
     assert(strcmp("gzip, deflate, br", accept_encoding.field_value) == 0);
   }
 }
+
+
