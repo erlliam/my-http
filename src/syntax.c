@@ -115,43 +115,33 @@ static bool parse_char(char **string, char parse)
 static bool parse_char_and_null_terminate(char **string,
   char parse)
 {
-  if (**string != parse) return false;
-
-  **string = '\0';
-  *string += 1;
+  if (!parse_char(string, parse)) return false;
+  (*string)[-1] = '\0';
 
   return true;
 }
 
 static bool parse_crlf(char **string)
 {
-  char *cr = *string;
-  char *lf = cr + 1;
-  if (!is_crlf(*cr, *lf)) return false;
+  if (!is_crlf((*string)[0], (*string)[1])) return false;
 
-  *string = lf + 1;
+  *string += 2;
 
   return true;
 }
 
 static void parse_ows(char **string)
 {
-  char *c = *string;
-  for (; is_wsp(*c); c++);
-
-  *string = c;
+  for (; is_wsp(**string); *string += 1);
 }
 
 static bool parse_token(char **string)
 {
   // min: 1 tchar, max: inf tchar
-  char *c = *string;
-  if (!is_tchar(*c)) return false;
-  c++;
+  if (!is_tchar(**string)) return false;
+  *string += 1;
 
-  for (; is_tchar(*c); c++);
-
-  *string = c;
+  for (; is_tchar(**string); *string += 1);
 
   return true;
 }
@@ -223,6 +213,7 @@ bool parse_request_line(char **string,
 
   char *http_version = *string;
   if (!parse_http_version(string)) return false;
+  if (!parse_crlf(string)) return false;
 
   // XXX null terminate when?
   request_line->method = method;
