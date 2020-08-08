@@ -112,15 +112,6 @@ static bool parse_char(char **string, char parse)
   return true;
 }
 
-static bool parse_char_and_null_terminate(char **string,
-  char parse)
-{
-  if (!parse_char(string, parse)) return false;
-  (*string)[-1] = '\0';
-
-  return true;
-}
-
 static bool parse_crlf(char **string)
 {
   if (!is_crlf((*string)[0], (*string)[1])) return false;
@@ -162,15 +153,6 @@ static bool parse_token(char **string)
 //     the request_target must be done
 //     (you are a space)
 
-// XXX it parses method and null terminates...
-// I don't like the name parse_method
-bool parse_method(char **string)
-{
-  if (!parse_token(string)) return false;
-  if (!parse_char(string, ' ')) return false;
-
-  return true;
-}
 bool parse_request_target(char **string)
 {
   if (!parse_char(string, '/')) return false;
@@ -183,21 +165,19 @@ bool parse_request_target(char **string)
     for (; is_query(*string); *string += 1);
   }
 
-  if (!parse_char(string, ' ')) return false;
-
   return true;
 }
 
-// XXX Hard coded http_version
 bool parse_http_version(char **string)
 {
+  // XXX Hard coded http_version
   char *s = *string;
 
   if (!(s[0] == 'H' && s[1] == 'T' && s[2] == 'T' &&
         s[3] == 'P' && s[4] == '/' && s[5] == '1' &&
         s[6] == '.' && s[7] == '1')) return false;
 
-  *string = s + 8;
+  *string += 8;
 
   return true;
 }
@@ -205,17 +185,33 @@ bool parse_http_version(char **string)
 bool parse_request_line(char **string,
   struct request_line *request_line)
 {
+  // char *method = parse_token(string);
+  // if (method == NULL) return false;
+  // char *first_space = parse_token(string);
+  // if (first_space == NULL) return false;
+
   char *method = *string;
-  if (!parse_method(string)) return false;
+  if (!parse_token(string)) return false;
+
+  char *method_end = *string;
+  if (!parse_char(string, ' ')) return false;
 
   char *request_target = *string;
   if (!parse_request_target(string)) return false;
 
+  char *request_target_end = *string;
+  if (!parse_char(string, ' ')) return false;
+
   char *http_version = *string;
   if (!parse_http_version(string)) return false;
+
+  char *http_version_end = *string;
   if (!parse_crlf(string)) return false;
 
-  // XXX null terminate when?
+  *method_end = '\0';
+  *request_target_end = '\0';
+  *http_version_end = '\0';
+
   request_line->method = method;
   request_line->request_target = request_target;
   request_line->http_version = http_version;
@@ -223,33 +219,22 @@ bool parse_request_line(char **string,
   return true;
 }
 
-bool parse_field_name(char **string)
-{
-  if (!parse_token(string)) return false;
-  if (!parse_char_and_null_terminate(string, ':'))
-    return false;
-
-  parse_ows(string);
-
-  return true;
-}
-
 bool parse_field_value(char **string)
 {
-  char *c = *string;
-  char *last_vchar = NULL;
+  char *field_value_end = NULL;
 
-  // Empty field-value
-  // handle empty field-value
-  if (*c == '\r') last_vchar = c - 1;
+  if (**string == '\r') field_value_end = *string - 1;
 
-  for (; is_vchar(*c) || is_wsp(*c); c++) {
-    if (is_vchar(*c)) last_vchar = c;
+  for (; is_vchar(**string) || is_wsp(**string); *string += 1) {
+    if (is_vchar(**string)) field_value_end = *string;
   }
 
-  *string = c;
+  field_value_end++;
+
   if (!parse_crlf(string)) return false;
-  *(last_vchar + 1) = '\0';
+
+
+  *field_value_end = '\0';
 
   return true;
 }
@@ -258,13 +243,32 @@ bool parse_header_field(char **string,
   struct header_field *header_field)
 {
   char *field_name = *string;
-  if (!parse_field_name(string)) return false;
+  if (!parse_token(string)) return false;
+
+  char *field_name_end = *string;
+  if (!parse_char(string, ':')) return false;
+  parse_ows(string);
 
   char *field_value = *string;
   if (!parse_field_value(string)) return false;
+  // parse_field_value null terminates after last vchar + 1
+  // also parses crlf
+
+  *field_name_end = '\0';
 
   header_field->field_name = field_name;
   header_field->field_value = field_value;
 
   return true;
+}
+
+bool parse_headers()
+{
+  // XXX make header_field array
+  // decide what to do if parsing header_field fails
+}
+
+bool parse_request()
+{
+  // XXX put it all together
 }

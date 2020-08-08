@@ -8,7 +8,6 @@
 #include "test_syntax.h"
 #include "syntax.h"
 
-void test_parse_method(void);
 void test_parse_request_target(void);
 void test_parse_http_version(void);
 
@@ -18,7 +17,6 @@ void test_parse_header_field(void);
 
 void run_test_syntax(void)
 {
-  // test_parse_method();
   // test_parse_request_target();
   // test_parse_http_version();
 
@@ -26,36 +24,6 @@ void run_test_syntax(void)
 
   test_parse_header_field();
 }
-
-void test_parse_method(void)
-{
-  {
-    char request_line[] = "GET / HTTP/1.1";
-    char *start = request_line;
-    char *current_position = request_line;
-
-    assert(parse_method(&current_position));
-    assert(strcmp("GET", start) == 0);
-    assert(current_position == start + 4);
-  }
-  {
-    char request_line[] = " GET / HTTP/1.1";
-    char *start = request_line;
-    char *current_position = request_line;
-
-    assert(!parse_method(&current_position));
-    assert(current_position == start);
-  }
-  {
-    char request_line[] = "G;ET / HTTP/1.1";
-    char *start = request_line;
-    char *current_position = request_line;
-
-    assert(!parse_method(&current_position));
-    assert(current_position == start);
-  }
-}
-
 
 void test_parse_request_target(void)
 {
@@ -108,7 +76,14 @@ void test_parse_request_line(void)
 {
   {
     char request_line_string[] =
-      "GET / HTTP/1.1\r\n";
+      "GET / HTTP/1.1\r\n"
+      "uuu";
+    // char request_line_string[] =
+    //   "GET / HTTP/1.1\r\n"
+    //   "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0\r\n"
+    //   "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8\r\n"
+    //   "Accept-Language: en-US,en;q=0.5\r\n"
+    //   "Accept-Encoding: gzip, deflate, br\r\n";
     struct request_line request_line;
     char *current_position = request_line_string;
 
@@ -118,29 +93,11 @@ void test_parse_request_line(void)
     puts(request_line.method);
     puts(request_line.request_target);
     puts(request_line.http_version);
-    puts(current_position);
     
     assert(strcmp(request_line.method, "GET") == 0);
     assert(strcmp(request_line.request_target, "/") == 0);
     assert(strcmp(request_line.http_version, "HTTP/1.1") == 0);
-  }
-  {
-    char request_line_string[] =
-      "GeT /% HTTP/1.1\r\n";
-    struct request_line request_line;
-    char *current_position = request_line_string;
-
-    assert(parse_request_line(
-      &current_position, &request_line));
-  }
-  {
-    char request_line_string[] =
-      "GET /% HTTP/1.1\r\n";
-    struct request_line request_line;
-    char *current_position = request_line_string;
-
-    assert(parse_request_line(
-      &current_position, &request_line));
+    assert(strcmp(current_position, "uuu") == 0);
   }
 }
 
@@ -155,10 +112,11 @@ void test_parse_header_field(void)
     assert(parse_header_field(
       &current_position, &header_field));
 
-    assert(strcmp("Server", header_field.field_name) == 0);
+    assert(strcmp(header_field.field_name, "Server") == 0);
+    puts(header_field.field_value);
     assert(strcmp(
-      "Apache/2.2.22 (Debian)",
-      header_field.field_value) == 0);
+      header_field.field_value,
+      "Apache/2.2.22 (Debian)") == 0);
 
     assert(current_position == (header_field_string +
       sizeof(header_field_string)) - 1);
