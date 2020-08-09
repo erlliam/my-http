@@ -8,6 +8,10 @@ TODO:
   [_] Parse request target
   [_] Write my own assert macro??
   [x] Write tests
+  [_] Rewrite parsing code:
+        Do not modify the data until it succeeds
+        Think about what should happen when it fails
+        These two things will complicate things
 
 Suggestions:
   Rename bin to build

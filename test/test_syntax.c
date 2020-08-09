@@ -15,6 +15,8 @@ void test_parse_request_line(void);
 
 void test_parse_header_field(void);
 
+void test_parse_headers(void);
+
 void run_test_syntax(void)
 {
   // test_parse_request_target();
@@ -23,6 +25,7 @@ void run_test_syntax(void)
   test_parse_request_line();
 
   test_parse_header_field();
+  test_parse_headers();
 }
 
 void test_parse_request_target(void)
@@ -90,10 +93,6 @@ void test_parse_request_line(void)
     assert(parse_request_line(
       &current_position, &request_line));
 
-    puts(request_line.method);
-    puts(request_line.request_target);
-    puts(request_line.http_version);
-    
     assert(strcmp(request_line.method, "GET") == 0);
     assert(strcmp(request_line.request_target, "/") == 0);
     assert(strcmp(request_line.http_version, "HTTP/1.1") == 0);
@@ -113,7 +112,6 @@ void test_parse_header_field(void)
       &current_position, &header_field));
 
     assert(strcmp(header_field.field_name, "Server") == 0);
-    puts(header_field.field_value);
     assert(strcmp(
       header_field.field_value,
       "Apache/2.2.22 (Debian)") == 0);
@@ -195,4 +193,52 @@ void test_parse_header_field(void)
   }
 }
 
+bool strcmp_header_field(
+  struct header_field header_field,
+  char *field_name, char *field_value)
+{
+  return strcmp(header_field.field_name, field_name) == 0
+    && strcmp(header_field.field_value, field_value) == 0;
 
+}
+
+void test_parse_headers(void)
+{
+  {
+    char header_field_string[] =
+      "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0\r\n"
+      "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8\r\n"
+      "Accept-Language: en-US,en;q=0.5\r\n"
+      "Accept-Encoding: gzip, deflate, br\r\n"
+      "\r\n";
+
+    char *current_position = header_field_string;
+
+    size_t header_capacity = 1;
+    size_t header_length = 0;
+    struct header_field *header_fields = malloc(sizeof(
+      struct header_field) * header_capacity);
+
+    struct header headers = {
+      .header_capacity = header_capacity,
+      .header_length = header_length,
+      .header_fields = header_fields
+    };
+
+    assert(parse_headers(&current_position, &headers));
+    assert(headers.header_length == 4);
+    assert(headers.header_capacity ==
+      (((1 * 2) * 2) * 2));
+    assert(strcmp_header_field(headers.header_fields[0],
+      "User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0"));
+    assert(strcmp_header_field(headers.header_fields[1],
+      "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"));
+    assert(strcmp_header_field(headers.header_fields[2],
+      "Accept-Language", "en-US,en;q=0.5"));
+    assert(strcmp_header_field(headers.header_fields[3],
+      "Accept-Encoding", "gzip, deflate, br"));
+
+
+    free(headers.header_fields);
+  }
+}

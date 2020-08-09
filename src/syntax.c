@@ -6,13 +6,7 @@
 #include <string.h>
 
 #include "syntax.h"
-/*
-  TODO:
-    Rewrite parsing code:
-      Do not modify the data until it succeeds
-      Think about what should happen when it fails
-    These two things will complicate things
-*/
+
 const char delimiters[] = "\"(),/:;<=>?@[\\]{}";
 const char sub_delims[] = "!$&'()*+,;=";
 
@@ -262,13 +256,41 @@ bool parse_header_field(char **string,
   return true;
 }
 
-bool parse_headers()
+bool parse_headers(char **string, struct header *header)
 {
-  // XXX make header_field array
-  // decide what to do if parsing header_field fails
+  for (;; header->header_length++) {
+
+    if (header->header_length == header->header_capacity) {
+      header->header_capacity *= 2;
+
+      struct header_field *r_a = realloc(
+        header->header_fields,
+        sizeof(struct header_field)
+        * header->header_capacity);
+      if (r_a == NULL) {
+        fprintf(stderr, "out of memory");
+        exit(EXIT_FAILURE);
+      }
+
+      puts("Resized");
+      header->header_fields = r_a;
+    }
+    // Actually parse
+    // XXX what happens if only one field is incorrect?
+    // do we just declare that request invalid?
+    // If this fails, mid parse, it should revert it's pointer location?
+    if (!parse_header_field(string, &header->header_fields[header->header_length])) {
+      break;
+    }
+  }
+  // Let parse request handle this?
+  if (!parse_crlf(string)) return false;
+
+  return true;
 }
 
 bool parse_request()
 {
   // XXX put it all together
+  return false;
 }
