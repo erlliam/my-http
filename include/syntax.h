@@ -31,6 +31,8 @@ bool parse_header_field(char **string,
   struct header_field *header_field);
 
 bool parse_headers(char **string, struct header *header);
-
+bool parse_request(char **string,
+  struct request_line *request_line,
+  struct header *headers);
 
 #endif

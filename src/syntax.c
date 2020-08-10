@@ -130,22 +130,6 @@ static bool parse_token(char **string)
 
   return true;
 }
-// origin-form: absolute-path [ "?" query ]
-//   absolute-path: 1*( "/" segment )
-//     absolute-path is a / and a segment.
-//     there must always be a / and a segment.
-//     a segment can be empty.
-//     segment: *pchar
-
-//   query: *( pchar / "/" / "?" )
-
-// Check for /
-// Start checking for segments.
-// If you are not a segment:
-//   you might be the start of the query.
-//   if you are not the start of the query:
-//     the request_target must be done
-//     (you are a space)
 
 bool parse_request_target(char **string)
 {
@@ -179,11 +163,6 @@ bool parse_http_version(char **string)
 bool parse_request_line(char **string,
   struct request_line *request_line)
 {
-  // char *method = parse_token(string);
-  // if (method == NULL) return false;
-  // char *first_space = parse_token(string);
-  // if (first_space == NULL) return false;
-
   char *method = *string;
   if (!parse_token(string)) return false;
 
@@ -219,14 +198,17 @@ bool parse_field_value(char **string)
 
   if (**string == '\r') field_value_end = *string - 1;
 
-  for (; is_vchar(**string) || is_wsp(**string); *string += 1) {
+  for (; is_vchar(**string)
+       || is_wsp(**string);
+       *string += 1) {
     if (is_vchar(**string)) field_value_end = *string;
   }
 
   field_value_end++;
 
+  // Parse CRLF before we possibly null terminate the CRLF
+  // I would like to move this to parse_header_field
   if (!parse_crlf(string)) return false;
-
 
   *field_value_end = '\0';
 
@@ -241,12 +223,12 @@ bool parse_header_field(char **string,
 
   char *field_name_end = *string;
   if (!parse_char(string, ':')) return false;
+
   parse_ows(string);
 
   char *field_value = *string;
   if (!parse_field_value(string)) return false;
   // parse_field_value null terminates after last vchar + 1
-  // also parses crlf
 
   *field_name_end = '\0';
 
@@ -272,25 +254,34 @@ bool parse_headers(char **string, struct header *header)
         exit(EXIT_FAILURE);
       }
 
-      puts("Resized");
       header->header_fields = r_a;
     }
-    // Actually parse
+
     // XXX what happens if only one field is incorrect?
     // do we just declare that request invalid?
     // If this fails, mid parse, it should revert it's pointer location?
-    if (!parse_header_field(string, &header->header_fields[header->header_length])) {
+
+    if (!parse_header_field(string,
+        &header->header_fields[header->header_length])) {
       break;
     }
   }
-  // Let parse request handle this?
-  if (!parse_crlf(string)) return false;
 
   return true;
 }
 
-bool parse_request()
+bool parse_request(char **string,
+  struct request_line *request_line,
+  struct header *headers)
 {
-  // XXX put it all together
-  return false;
+  if (!parse_request_line(string, request_line))
+    return false;
+
+  if (!parse_headers(string, headers)) return false;
+
+  // Parse headers parses it's CRLF. Now there should be
+  // an empty line to indicate header end.
+  if (!parse_crlf(string)) return false;
+
+  return true;
 }

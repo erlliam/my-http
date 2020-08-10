@@ -11,11 +11,12 @@
 void test_parse_request_target(void);
 void test_parse_http_version(void);
 
-void test_parse_request_line(void);
-
 void test_parse_header_field(void);
 
+void test_parse_request_line(void);
 void test_parse_headers(void);
+
+void test_parse_request(void);
 
 void run_test_syntax(void)
 {
@@ -26,6 +27,8 @@ void run_test_syntax(void)
 
   test_parse_header_field();
   test_parse_headers();
+
+  test_parse_request();
 }
 
 void test_parse_request_target(void)
@@ -238,6 +241,110 @@ void test_parse_headers(void)
     assert(strcmp_header_field(headers.header_fields[3],
       "Accept-Encoding", "gzip, deflate, br"));
 
+
+    free(headers.header_fields);
+  }
+}
+
+bool strcmp_request_line(
+  struct request_line request_line,
+  char *method, char *request_target, char *http_version)
+{
+  
+  return
+    strcmp(request_line.method, method) == 0
+    && strcmp(request_line.request_target, request_target) == 0
+    && strcmp(request_line.http_version, http_version) == 0;
+}
+
+void test_parse_request(void) {
+  {
+    char request[] =
+      "GET /essays.html HTTP/1.1\r\n"
+      "Host: strager.net\r\n"
+      "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0\r\n"
+      "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8\r\n"
+      "Accept-Language: en-US,en;q=0.5\r\n"
+      "Accept-Encoding: gzip, deflate, br\r\n"
+      "Referer: https://strager.net/\r\n"
+      "Connection: keep-alive\r\n"
+      "Upgrade-Insecure-Requests: 1\r\n"
+      "If-Modified-Since: Mon, 27 Jul 2020 04:04:34 GMT\r\n"
+      "If-None-Match: W/\"5f1e5252-522\"\r\n"
+      "Cache-Control: max-age=0\r\n"
+      "TE: Trailers\r\n"
+      "\r\n";
+    struct request_line request_line;
+
+    size_t header_capacity = 1;
+    size_t header_length = 0;
+    struct header_field *header_fields = malloc(sizeof(
+      struct header_field) * header_capacity);
+
+    struct header headers = {
+      .header_capacity = header_capacity,
+      .header_length = header_length,
+      .header_fields = header_fields
+    };
+
+    char *current_position = request;
+
+    assert(parse_request(&current_position,
+      &request_line, &headers));
+
+    assert(strcmp_request_line(request_line,
+      "GET", "/essays.html", "HTTP/1.1"));
+    assert(strcmp_header_field(headers.header_fields[0],
+      "Host", "strager.net"));
+    assert(strcmp_header_field(headers.header_fields[6],
+      "Connection", "keep-alive"));
+    assert(strcmp_header_field(headers.header_fields[8],
+      "If-Modified-Since", "Mon, 27 Jul 2020 04:04:34 GMT"));
+
+    free(headers.header_fields);
+  }
+  {
+    char request[] =
+      "GET /essays.html HTTP/1.1\r\n"
+      "Host: strager.net                  \r\n"
+      "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0                                   \r\n"
+      "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8                     \r\n"
+      "Accept-Language: en-US,en;q=0.5                 \r\n"
+      "Accept-Encoding: gzip, deflate, br           \r\n"
+      "Referer: https://strager.net/\r\n"
+      "Connection: keep-alive\r\n"
+      "Upgrade-Insecure-Requests: 1\r\n"
+      "If-Modified-Since: Mon, 27 Jul 2020 04:04:34 GMT\r\n"
+      "If-None-Match: W/\"5f1e5252-522\"\r\n"
+      "Cache-Control: max-age=0\r\n"
+      "TE: Trailers\r\n"
+      "\r\n";
+    struct request_line request_line;
+
+    size_t header_capacity = 1;
+    size_t header_length = 0;
+    struct header_field *header_fields = malloc(sizeof(
+      struct header_field) * header_capacity);
+
+    struct header headers = {
+      .header_capacity = header_capacity,
+      .header_length = header_length,
+      .header_fields = header_fields
+    };
+
+    char *current_position = request;
+
+    assert(parse_request(&current_position,
+      &request_line, &headers));
+
+    assert(strcmp_request_line(request_line,
+      "GET", "/essays.html", "HTTP/1.1"));
+    assert(strcmp_header_field(headers.header_fields[0],
+      "Host", "strager.net"));
+    assert(strcmp_header_field(headers.header_fields[6],
+      "Connection", "keep-alive"));
+    assert(strcmp_header_field(headers.header_fields[8],
+      "If-Modified-Since", "Mon, 27 Jul 2020 04:04:34 GMT"));
 
     free(headers.header_fields);
   }
