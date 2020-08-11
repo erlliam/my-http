@@ -7,6 +7,26 @@
 
 #include "syntax.h"
 
+struct request create_request(size_t header_capacity)
+{
+  struct request request;
+  
+  request.headers.header_capacity = header_capacity;
+  request.headers.header_length = 0;
+  
+  struct header_field *m_a = malloc(
+    sizeof(struct header_field) * header_capacity);
+
+  if (m_a == NULL) {
+    fprintf(stderr, "out of memory");
+    exit(EXIT_FAILURE);
+  }
+
+  request.headers.header_fields = m_a;
+
+  return request;
+}
+
 const char delimiters[] = "\"(),/:;<=>?@[\\]{}";
 const char sub_delims[] = "!$&'()*+,;=";
 
@@ -279,8 +299,6 @@ bool parse_request(char **string,
 
   if (!parse_headers(string, headers)) return false;
 
-  // Parse headers parses it's CRLF. Now there should be
-  // an empty line to indicate header end.
   if (!parse_crlf(string)) return false;
 
   return true;

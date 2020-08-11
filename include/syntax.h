@@ -20,6 +20,13 @@ struct header {
   struct header_field *header_fields;
 };
 
+struct request {
+  struct request_line request_line;
+  struct header headers;
+};
+
+struct request create_request(size_t header_capacity);
+
 bool parse_request_line(char **string,
   struct request_line *request_line);
 
