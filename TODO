@@ -3,7 +3,7 @@ GOAL:
   [_] Handle GET requests
 
 TODO:
-  [_] Clean up server code
+  [~] Clean up server code
   [x] Parse request
   [_] Receive data from client and parse it
   [_] Respond to requests

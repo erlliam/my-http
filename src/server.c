@@ -51,11 +51,12 @@ static void recv_client(
 static void get_address(struct sockaddr *sa,
   struct address *address);
 
-static struct client_connections create_client_connections();
-static void add_to_sockets(
+static struct client_connections create_client_connections(
+  void);
+static void add_to_client_connections(
   struct client_connections *client_connections, int fd,
   struct address address);
-static void del_from_sockets(
+static void del_from_client_connections(
   struct client_connections *client_connections, int index);
 
 void print_address(struct address address);
@@ -152,30 +153,33 @@ static void accept_connections(int server_fd,
 {
   struct client_connections client_connections =
     create_client_connections();
-  add_to_sockets(&client_connections, server_fd, address);
+
+  add_to_client_connections(&client_connections, server_fd,
+    address);
 
   printf("%s():\n", __func__);
 
   for (;;) {
-    // XXX
-    // Stop looping once you recv poll_count times
     int poll_count = poll(client_connections.pfds,
       client_connections.length, -1);
+    int poll_found = 0;
 
     if (poll_count == -1) {
       perror("poll error");
       exit(EXIT_FAILURE);
     }
 
-    for (size_t i = 0; i < client_connections.length; i++) {
+    for (size_t i = 0; i < client_connections.length &&
+         poll_found != poll_count; i++) {
       if (client_connections.pfds[i].revents & POLLIN) {
+        poll_found++;
+        client_connections.pfds[i].revents = 0;
         if (client_connections.pfds[i].fd == server_fd) {
           accept_client(&client_connections, server_fd);
         } else {
           recv_client(&client_connections, i);
         }
       }
-      client_connections.pfds[i].revents = 0;
     } // loop through client_connections.pfds[]
   } // infinite loop
 }
@@ -198,7 +202,7 @@ static void accept_client(
   struct address address;
   get_address((struct sockaddr *)&sa_s, &address);
 
-  add_to_sockets(client_connections, client_fd, address);
+  add_to_client_connections(client_connections, client_fd, address);
 
   printf("\tConnected: ");
   print_address(address);
@@ -217,25 +221,22 @@ static void recv_client(
     printf("\tDisconnected: ");
     print_address(client_connections->address[index]);
 
-    del_from_sockets(client_connections, index);
+    del_from_client_connections(client_connections, index);
     close(fd);
+    return;
   }
 
   buffer[rb] = '\0';
 
-  // XXX
-  // Print the data a client sends.
-  // The if removes the "empty" print when a client
-  // disconnects, this feature will probably be removed.
-
-  if (rb > 0) printf(
+  printf(
     "received from %s:%d:\n%s\n",
     client_connections->address[index].ip,
     client_connections->address[index].port,
     buffer);
 }
 
-static struct client_connections create_client_connections()
+static struct client_connections create_client_connections(
+  void)
 {
   // XXX
   // Not sure how I feel about the default capacity being
@@ -260,7 +261,7 @@ static struct client_connections create_client_connections()
   };
 }
 
-static void add_to_sockets(
+static void add_to_client_connections(
   struct client_connections *client_connections, int fd,
   struct address address)
 {
@@ -271,16 +272,17 @@ static void add_to_sockets(
       client_connections->capacity *= 2;
       assert(client_connections->capacity > old_capacity);
     }
-    struct pollfd *pfds = realloc(client_connections->pfds,
+    struct pollfd *cc_pfds = realloc(
+      client_connections->pfds,
       sizeof(struct pollfd) * client_connections->capacity);
 
-    struct address *address = realloc(
+    struct address *cc_address = realloc(
       client_connections->address, sizeof(struct address) *
       client_connections->capacity);
 
-    if (pfds && address) {
-      client_connections->pfds = pfds;
-      client_connections->address = address;
+    if (cc_pfds && cc_address) {
+      client_connections->pfds = cc_pfds;
+      client_connections->address = cc_address;
     } else {
       fprintf(stderr, "out of memory");
       exit(EXIT_FAILURE);
@@ -292,8 +294,8 @@ static void add_to_sockets(
     pfds[client_connections->length].fd = fd;
   client_connections->
     pfds[client_connections->length].events = POLLIN;
-  // @@@
-  // use pointer?
+
+  // @@@ use pointer?
   // I have forgotten what this means
   client_connections->
     address[client_connections->length] = address;
@@ -301,15 +303,9 @@ static void add_to_sockets(
   client_connections->length++;
 }
 
-static void del_from_sockets(
+static void del_from_client_connections(
   struct client_connections *client_connections, int index)
 {
-
-  // XXX should previous data be deleted or is it ok to
-  // just overwrite as needed
-
-  // set revents to 0 to prevent blocking on recv
-  // client_connections->pfds[index].revents = 0;
   client_connections->pfds[index] = client_connections->
     pfds[client_connections->length - 1];
 
@@ -319,7 +315,6 @@ static void del_from_sockets(
 static void get_address(struct sockaddr *sa,
   struct address *address)
 {
-  // XXX inet_ntop can return NULL
   if (sa->sa_family == AF_INET) {
     struct sockaddr_in *in = (struct sockaddr_in *)sa;
 
